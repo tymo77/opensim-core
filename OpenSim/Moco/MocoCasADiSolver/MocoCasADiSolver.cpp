@@ -239,6 +239,7 @@ std::unique_ptr<CasOC::Solver> MocoCasADiSolver::createCasOCSolver(
     checkPropertyValueIsInSet(getProperty_verbosity(), {0, 1, 2});
     if (get_optim_solver() == "ipopt") {
         solverOptions["print_user_options"] = "yes";
+        solverOptions["warm_start_init_point"] = "yes";
         if (get_verbosity() < 2) {
             solverOptions["print_level"] = 0;
         } else if (get_optim_ipopt_print_level() != -1) {

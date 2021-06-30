@@ -64,6 +64,11 @@ public:
 
     Solution solve(const Iterate& guessOrig);
 
+    // These are the upper and lower bounds that variables send to the NLP
+    // solver will be scaled between (if they have LB and UB).
+    static double SCALED_LB;
+    static double SCALED_UB;
+
 protected:
     /// This must be called in the constructor of derived classes so that
     /// overridden virtual methods are accessible to the base class. This
@@ -82,17 +87,37 @@ protected:
             const casadi::Matrix<casadi_int>& timeIndices) const;
 
     template <typename TRow, typename TColumn>
-    void setVariableBounds(Var var, const TRow& rowIndices,
+    void setVariableBoundsAndScale(Var var, const TRow& rowIndices,
             const TColumn& columnIndices, const Bounds& bounds) {
         if (bounds.isSet()) {
             const auto& lower = bounds.lower;
             m_lowerBounds[var](rowIndices, columnIndices) = lower;
             const auto& upper = bounds.upper;
             m_upperBounds[var](rowIndices, columnIndices) = upper;
+
+            // TODO: Best way to check for equality bounds?
+            double m, b;
+            if (abs(upper - lower) / abs(upper) > 1e-10) {
+                m = (SCALED_UB - SCALED_LB) / (upper - lower);
+                b = SCALED_LB - m * lower;
+            } else {
+                m = 1.0;
+                b = 0.0;
+            }
+
+            //m_scalingMultiplier[var](rowIndices, columnIndices) = 1.0;
+            //m_scalingShifter[var](rowIndices, columnIndices) = 0.0;
+
+            m_scalingMultiplier[var](rowIndices, columnIndices) = m;
+            m_scalingShifter[var](rowIndices, columnIndices) = b;
+
         } else {
             const auto inf = std::numeric_limits<double>::infinity();
             m_lowerBounds[var](rowIndices, columnIndices) = -inf;
             m_upperBounds[var](rowIndices, columnIndices) = inf;
+
+            m_scalingMultiplier[var](rowIndices, columnIndices) = 1.0;
+            m_scalingShifter[var](rowIndices, columnIndices) = 0.0;
         }
     }
 
@@ -135,6 +160,9 @@ private:
     casadi::MX m_paramsTrajMeshInterior;
     VariablesDM m_lowerBounds;
     VariablesDM m_upperBounds;
+    VariablesDM m_scalingMultiplier; // The multiplier used to scale the variable magnitude.
+    VariablesDM m_scalingShifter; // The shift used to center the variable value
+                                  // range.
 
     casadi::DM m_meshIndicesMap;
     casadi::Matrix<casadi_int> m_gridIndices;
@@ -199,6 +227,51 @@ private:
         }
         return T::veccat(stdvec);
     }
+
+    // Take the variables and linearly scale them to the fixed range.
+    template <typename T>
+    CasOC::Variables<T> scaleVariables(CasOC::Variables<T> vars) const {
+        const VariablesDM& b = m_scalingShifter;
+        const VariablesDM& m = m_scalingMultiplier;
+        for (const auto& key : getSortedVarKeys(vars)) {
+            vars.at(key) = scaleVar(key, vars.at(key));
+        }
+        return vars;
+    }
+
+    // Transform the variables back to their original values.
+    template <typename T>
+    CasOC::Variables<T> unScaleVariables(CasOC::Variables<T> vars) const {
+        const VariablesDM& b = m_scalingShifter;
+        const VariablesDM& m = m_scalingMultiplier;
+        for (const auto& key : getSortedVarKeys(vars)) {
+            vars.at(key) = unScaleVar(key, vars.at(key));
+        }
+        return vars;
+    }
+
+    CasOC::VariablesDM unScaleVariables(const CasOC::VariablesDM& vars) const {
+        CasOC::VariablesDM out;
+        const VariablesDM& b = m_scalingShifter;
+        const VariablesDM& m = m_scalingMultiplier;
+        for (const auto& key : getSortedVarKeys(vars)) {
+            out.at(key) = unScaleVar(key, vars.at(key));
+        }
+        return out;
+    }
+
+    // Scale the variable by its linear bounds scaler.
+    template <typename T>
+    T scaleVar(CasOC::Var v, T x) const {
+        return m_scalingMultiplier.at(v) * x + m_scalingShifter.at(v);
+    }
+
+    // Unscale a variable by its linear bounds scaler.
+    template <typename T>
+    T unScaleVar(CasOC::Var v, T x) const {
+        return (x - m_scalingShifter.at(v)) / m_scalingMultiplier.at(v);
+    }
+
     /// Convert the 'x' column vector into separate variables.
     CasOC::VariablesDM expandVariables(const casadi::DM& x) const {
         CasOC::VariablesDM out;
@@ -208,6 +281,21 @@ private:
             const auto& value = m_vars.at(key);
             // Convert a portion of the column vector into a matrix.
             out[key] = casadi::DM::reshape(
+                    x(Slice(offset, offset + value.numel())), value.rows(),
+                    value.columns());
+            offset += value.numel();
+        }
+        return out;
+    }
+
+    CasOC::VariablesMX expandVariables(const casadi::MX& x) const {
+        CasOC::VariablesMX out;
+        using casadi::Slice;
+        casadi_int offset = 0;
+        for (const auto& key : getSortedVarKeys(m_vars)) {
+            const auto& value = m_vars.at(key);
+            // Convert a portion of the column vector into a matrix.
+            out[key] = casadi::MX::reshape(
                     x(Slice(offset, offset + value.numel())), value.rows(),
                     value.columns());
             offset += value.numel();
@@ -398,7 +486,6 @@ private:
         }
         return out;
     }
-
 
     friend class NlpsolCallback;
 };

@@ -184,10 +184,13 @@ MocoSolution gaitTracking(double controlEffortWeight = 10,
     solver.set_optim_convergence_tolerance(1e-4);
     solver.set_optim_constraint_tolerance(1e-4);
     solver.set_optim_max_iterations(1000);
+    solver.set_parallel(1);
 
     // Solve problem.
     // ==============
     MocoSolution solution = study.solve();
+    solution.unseal();
+    solution.write("gaitTracking_solution_halfcycle.sto");
     auto full = createPeriodicTrajectory(solution);
     full.write("gaitTracking_solution_fullcycle.sto");
 
