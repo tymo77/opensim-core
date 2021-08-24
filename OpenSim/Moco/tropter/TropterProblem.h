@@ -97,8 +97,8 @@ protected:
     }
 
     void addStateVariables() {
-        this->set_time(convertBounds(m_mocoProbRep.getTimeInitialBounds()),
-                convertBounds(m_mocoProbRep.getTimeFinalBounds()));
+        this->set_time(convertBounds(m_mocoProbRep.getTimeInfo().getInitialBounds()),
+                convertBounds(m_mocoProbRep.getTimeInfo().getFinalBounds()));
         for (const auto& svName : m_svNamesInSysOrder) {
             const auto& info = m_mocoProbRep.getStateInfo(svName);
             this->add_state(svName, convertBounds(info.getBounds()),

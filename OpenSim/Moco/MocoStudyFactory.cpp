@@ -74,7 +74,7 @@ MocoStudy MocoStudyFactory::createLinearTangentSteeringStudy(
     MocoStudy study;
     auto& problem = study.updProblem();
     problem.setModelAsCopy(model);
-    problem.setTimeBounds(0, finalTime);
+    problem.setTimeInfo(0, finalTime);
     problem.setStateInfo("/jointset/tx/tx/value", {0, 10}, 0);
     problem.setStateInfo(
             "/jointset/ty/ty/value", {0, finalHeight}, 0, finalHeight);

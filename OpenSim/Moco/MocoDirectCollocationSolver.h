@@ -145,6 +145,8 @@ public:
             "enforced, set the bounds on the slack variables performing the "
             "velocity correction to project the model coordinates back onto "
             "the constraint manifold. Default: [-0.1, 0.1]");
+    OpenSim_DECLARE_PROPERTY(velocity_correction_scaler, double,
+            "Scale the velocity correction variables in the nlp. Default: 1.0");
     OpenSim_DECLARE_PROPERTY(implicit_multibody_acceleration_bounds, MocoBounds,
             "Bounds on acceleration variables in implicit dynamics mode. "
             "Default: [-1000, 1000]");

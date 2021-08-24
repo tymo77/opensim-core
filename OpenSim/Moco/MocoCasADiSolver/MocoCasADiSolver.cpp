@@ -46,11 +46,15 @@ void MocoCasADiSolver::constructProperties() {
     constructProperty_optim_finite_difference_scheme("central");
     constructProperty_parallel();
     constructProperty_output_interval(0);
+    constructProperty_scaling_method("none");
 
     constructProperty_minimize_implicit_multibody_accelerations(false);
     constructProperty_implicit_multibody_accelerations_weight(1.0);
+    constructProperty_implicit_multibody_accelerations_scaler(1.0);
+
     constructProperty_minimize_implicit_auxiliary_derivatives(false);
     constructProperty_implicit_auxiliary_derivatives_weight(1.0);
+    constructProperty_implicit_auxiliary_derivatives_scaler(1.0);
 }
 
 bool MocoCasADiSolver::isAvailable() {
@@ -239,7 +243,6 @@ std::unique_ptr<CasOC::Solver> MocoCasADiSolver::createCasOCSolver(
     checkPropertyValueIsInSet(getProperty_verbosity(), {0, 1, 2});
     if (get_optim_solver() == "ipopt") {
         solverOptions["print_user_options"] = "yes";
-        solverOptions["warm_start_init_point"] = "yes";
         if (get_verbosity() < 2) {
             solverOptions["print_level"] = 0;
         } else if (get_optim_ipopt_print_level() != -1) {
@@ -309,6 +312,8 @@ std::unique_ptr<CasOC::Solver> MocoCasADiSolver::createCasOCSolver(
             get_implicit_multibody_accelerations_weight());
     casSolver->setImplicitMultibodyAccelerationsWeight(
             get_implicit_multibody_accelerations_weight());
+    casSolver->setImplicitMultibodyAccelerationsScaler(
+            get_implicit_multibody_accelerations_scaler());
 
     casSolver->setImplicitAuxiliaryDerivativeBounds(
             convertBounds(get_implicit_auxiliary_derivative_bounds()));
@@ -320,6 +325,8 @@ std::unique_ptr<CasOC::Solver> MocoCasADiSolver::createCasOCSolver(
             get_implicit_auxiliary_derivatives_weight());
     casSolver->setImplicitAuxiliaryDerivativesWeight(
             get_implicit_auxiliary_derivatives_weight());
+    casSolver->setImplicitAuxiliaryDerivativesScaler(
+            get_implicit_auxiliary_derivatives_scaler());
 
     casSolver->setOptimSolver(get_optim_solver());
     casSolver->setInterpolateControlMidpoints(

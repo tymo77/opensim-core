@@ -158,6 +158,10 @@ public:
             "The weight on the cost term added if "
             "'minimize_implicit_multibody_accelerations' is enabled."
             "Default: 1.0.");
+    OpenSim_DECLARE_PROPERTY(implicit_multibody_accelerations_scaler, double,
+            "The scaler on the variable added if "
+            "'minimize_implicit_multibody_accelerations' is enabled."
+            "Default: 1.0.");
     OpenSim_DECLARE_PROPERTY(minimize_implicit_auxiliary_derivatives, bool,
             "Minimize the integral of the squared derivative continuous "
             "variables for components with implicit auxiliary dynamics. "
@@ -166,6 +170,16 @@ public:
             "The weight on the cost term added if "
             "'minimize_implicit_auxiliary_derivatives' is enabled."
             "Default: 1.0.");
+    OpenSim_DECLARE_PROPERTY(implicit_auxiliary_derivatives_scaler, double,
+            "The scaler on the solver variable added if "
+            "'minimize_implicit_auxiliary_derivatives' is enabled."
+            "Default: 1.0.");
+    OpenSim_DECLARE_PROPERTY(scaling_method, std::string,
+            "The scaling method that you would like to be applied "
+            "to this problem. Options:\n"
+            " - 'none' : no scaling' (default)\n"
+            " - 'bounds' : scale variable according to its bounds\n"
+            " - 'info' : use the values manually specified.")
 
     MocoCasADiSolver();
 

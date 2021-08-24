@@ -30,9 +30,9 @@ using namespace OpenSim;
 MocoPhase::MocoPhase() { constructProperties(); }
 void MocoPhase::constructProperties() {
     constructProperty_model(ModelProcessor(Model{}));
-    constructProperty_time_initial_bounds(MocoInitialBounds());
-    constructProperty_time_final_bounds(MocoFinalBounds());
+    constructProperty_time_info(MocoVariableInfo());
     constructProperty_default_speed_bounds(MocoBounds(-50, 50));
+    constructProperty_default_speed_scaler(1.0);
     constructProperty_bound_activation_from_excitation(true);
     constructProperty_state_infos();
     constructProperty_state_infos_pattern();
@@ -42,7 +42,9 @@ void MocoPhase::constructProperties() {
     constructProperty_goals();
     constructProperty_path_constraints();
     constructProperty_kinematic_constraint_bounds(MocoBounds(0));
+
     constructProperty_multiplier_bounds(MocoBounds(-1000.0, 1000.0));
+    constructProperty_multiplier_scalers(1.0);
 }
 Model* MocoPhase::setModel(std::unique_ptr<Model> model) {
     // Write the connectee paths to properties.
@@ -59,10 +61,11 @@ void MocoPhase::setModelProcessor(ModelProcessor model) {
 ModelProcessor& MocoPhase::updModelProcessor() {
     return upd_model();
 }
-void MocoPhase::setTimeBounds(
-        const MocoInitialBounds& initial, const MocoFinalBounds& final) {
-    set_time_initial_bounds(initial);
-    set_time_final_bounds(final);
+void MocoPhase::setTimeInfo(
+        const MocoInitialBounds& initial, const MocoFinalBounds& final, 
+        double variable_scaler) {
+    MocoVariableInfo info("time", {initial.getLower(), final.getUpper()}, initial, final, variable_scaler);
+    set_time_info(info);
 }
 void MocoPhase::printStateNamesWithSubstring(const std::string& substring) {
     std::vector<std::string> foundNames;
@@ -84,10 +87,11 @@ void MocoPhase::printStateNamesWithSubstring(const std::string& substring) {
     }
 }
 void MocoPhase::setStateInfo(const std::string& name, const MocoBounds& bounds,
-        const MocoInitialBounds& initial, const MocoFinalBounds& final) {
+        const MocoInitialBounds& initial, const MocoFinalBounds& final,
+        double variable_scaler) {
     int idx = getProperty_state_infos().findIndexForName(name);
 
-    MocoVariableInfo info(name, bounds, initial, final);
+    MocoVariableInfo info(name, bounds, initial, final, variable_scaler);
     if (idx == -1)
         append_state_infos(info);
     else
@@ -95,10 +99,10 @@ void MocoPhase::setStateInfo(const std::string& name, const MocoBounds& bounds,
 }
 void MocoPhase::setStateInfoPattern(const std::string& pattern,
         const MocoBounds& bounds, const MocoInitialBounds& initial,
-        const MocoFinalBounds& final) {
+        const MocoFinalBounds& final, double variable_scaler) {
     int idx = getProperty_state_infos_pattern().findIndexForName(pattern);
 
-    MocoVariableInfo info(pattern, bounds, initial, final);
+    MocoVariableInfo info(pattern, bounds, initial, final, variable_scaler);
     if (idx == -1)
         append_state_infos_pattern(info);
     else
@@ -125,10 +129,10 @@ void MocoPhase::printControlNamesWithSubstring(const std::string& substring) {
 }
 void MocoPhase::setControlInfo(const std::string& name,
         const MocoBounds& bounds, const MocoInitialBounds& initial,
-        const MocoFinalBounds& final) {
+        const MocoFinalBounds& final, double variable_scaler) {
     int idx = getProperty_control_infos().findIndexForName(name);
 
-    MocoVariableInfo info(name, bounds, initial, final);
+    MocoVariableInfo info(name, bounds, initial, final, variable_scaler);
     if (idx == -1)
         append_control_infos(info);
     else
@@ -136,20 +140,17 @@ void MocoPhase::setControlInfo(const std::string& name,
 }
 void MocoPhase::setControlInfoPattern(const std::string& pattern,
         const MocoBounds& bounds, const MocoInitialBounds& initial,
-        const MocoFinalBounds& final) {
+        const MocoFinalBounds& final, double variable_scaler) {
     int idx = getProperty_control_infos_pattern().findIndexForName(pattern);
 
-    MocoVariableInfo info(pattern, bounds, initial, final);
+    MocoVariableInfo info(pattern, bounds, initial, final, variable_scaler);
     if (idx == -1)
         append_control_infos_pattern(info);
     else
         upd_control_infos_pattern(idx) = info;
 }
-MocoInitialBounds MocoPhase::getTimeInitialBounds() const {
-    return get_time_initial_bounds();
-}
-MocoFinalBounds MocoPhase::getTimeFinalBounds() const {
-    return get_time_final_bounds();
+const MocoVariableInfo& MocoPhase::getTimeInfo() const {
+    return get_time_info();
 }
 const MocoVariableInfo& MocoPhase::getStateInfo(const std::string& name) const {
 
@@ -224,25 +225,26 @@ Model* MocoProblem::setModelAsCopy(Model model) {
 void MocoProblem::setModelProcessor(ModelProcessor model) {
     upd_phases(0).setModelProcessor(std::move(model));
 }
-void MocoProblem::setTimeBounds(
-        const MocoInitialBounds& initial, const MocoFinalBounds& final) {
-    upd_phases(0).setTimeBounds(initial, final);
+void MocoProblem::setTimeInfo(
+        const MocoInitialBounds& initial, const MocoFinalBounds& final,
+    double variable_scaler) {
+    upd_phases(0).setTimeInfo(initial, final, variable_scaler);
 }
 void MocoProblem::printStateNamesWithSubstring(const std::string& name) {
     upd_phases(0).printStateNamesWithSubstring(name);
 }
 void MocoProblem::setStateInfo(const std::string& name,
         const MocoBounds& bounds, const MocoInitialBounds& initial,
-        const MocoFinalBounds& final) {
-    upd_phases(0).setStateInfo(name, bounds, initial, final);
+        const MocoFinalBounds& final, double state_scaler) {
+    upd_phases(0).setStateInfo(name, bounds, initial, final, state_scaler);
 }
 void MocoProblem::printControlNamesWithSubstring(const std::string& name) {
     upd_phases(0).printControlNamesWithSubstring(name);
 }
 void MocoProblem::setControlInfo(const std::string& name,
         const MocoBounds& bounds, const MocoInitialBounds& initial,
-        const MocoFinalBounds& final) {
-    upd_phases(0).setControlInfo(name, bounds, initial, final);
+        const MocoFinalBounds& final, double variable_scaler) {
+    upd_phases(0).setControlInfo(name, bounds, initial, final, variable_scaler);
 }
 void MocoProblem::setKinematicConstraintBounds(const MocoBounds& bounds) {
     upd_phases(0).setKinematicConstraintBounds(bounds);
@@ -258,12 +260,19 @@ void MocoProblem::constructProperties() {
 }
 void MocoProblem::setStateInfoPattern(const std::string& pattern,
         const MocoBounds& bounds, const MocoInitialBounds& initial,
-        const MocoFinalBounds& final) {
-    upd_phases(0).setStateInfoPattern(pattern, bounds, initial, final);
+        const MocoFinalBounds& final, double variable_scaler) {
+    upd_phases(0).setStateInfoPattern(
+            pattern, bounds, initial, final, variable_scaler);
 }
 
 void MocoProblem::setControlInfoPattern(const std::string& pattern,
         const MocoBounds& bounds, const MocoInitialBounds& initial,
-        const MocoFinalBounds& final) {
-    upd_phases(0).setControlInfoPattern(pattern, bounds, initial, final);
+        const MocoFinalBounds& final, double variable_scaler) {
+    upd_phases(0).setControlInfoPattern(
+            pattern, bounds, initial, final, variable_scaler);
+}
+
+
+void MocoProblem::setMultiplierScaler(double variable_scaler) {
+    upd_phases(0).setMultiplierScalers(variable_scaler);
 }

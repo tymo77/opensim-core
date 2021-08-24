@@ -41,6 +41,8 @@ MocoCasOCProblem::MocoCasOCProblem(const MocoCasADiSolver& mocoCasADiSolver,
     setDynamicsMode(dynamicsMode);
     const auto& model = problemRep.getModelBase();
 
+    setScaleMethod(mocoCasADiSolver.get_scaling_method());
+
     // Ensure the model does not have user-provided controllers.
     int numControllers = 0;
     for (const auto& controller : model.getComponentList<Controller>()) {
@@ -59,8 +61,8 @@ MocoCasOCProblem::MocoCasOCProblem(const MocoCasADiSolver& mocoCasADiSolver,
 
     auto stateNames =
             problemRep.createStateVariableNamesInSystemOrder(m_yIndexMap);
-    setTimeBounds(convertBounds(problemRep.getTimeInitialBounds()),
-            convertBounds(problemRep.getTimeFinalBounds()));
+    setTimeInfo(convertBounds(problemRep.getTimeInfo().getInitialBounds()),
+            convertBounds(problemRep.getTimeInfo().getFinalBounds()), problemRep.getTimeInfo().getVariableScaler());
     for (const auto& stateName : stateNames) {
         const auto& info = problemRep.getStateInfo(stateName);
         CasOC::StateType stateType;
@@ -72,7 +74,7 @@ MocoCasOCProblem::MocoCasOCProblem(const MocoCasADiSolver& mocoCasADiSolver,
             stateType = CasOC::StateType::Auxiliary;
         addState(stateName, stateType, convertBounds(info.getBounds()),
                 convertBounds(info.getInitialBounds()),
-                convertBounds(info.getFinalBounds()));
+                convertBounds(info.getFinalBounds()), info.getVariableScaler());
     }
 
     auto controlNames =
@@ -81,7 +83,7 @@ MocoCasOCProblem::MocoCasOCProblem(const MocoCasADiSolver& mocoCasADiSolver,
         const auto& info = problemRep.getControlInfo(controlName);
         addControl(controlName, convertBounds(info.getBounds()),
                 convertBounds(info.getInitialBounds()),
-                convertBounds(info.getFinalBounds()));
+                convertBounds(info.getFinalBounds()), info.getVariableScaler());
     }
 
     // Set the number of residual equations to be enforced for components with
@@ -180,7 +182,8 @@ MocoCasOCProblem::MocoCasOCProblem(const MocoCasADiSolver& mocoCasADiSolver,
                     addKinematicConstraint(multInfo.getName(),
                             convertBounds(multInfo.getBounds()),
                             convertBounds(multInfo.getInitialBounds()),
-                            convertBounds(multInfo.getFinalBounds()), kinLevel);
+                            convertBounds(multInfo.getFinalBounds()), kinLevel,
+                            multInfo.getVariableScaler());
 
                     // Add velocity correction variables if enforcing
                     // constraint equation derivatives.
@@ -198,9 +201,12 @@ MocoCasOCProblem::MocoCasOCProblem(const MocoCasADiSolver& mocoCasADiSolver,
                         const auto vcBounds = convertBounds(
                                 mocoCasADiSolver
                                         .get_velocity_correction_bounds());
+                        double vcScaler =
+                                mocoCasADiSolver
+                                        .get_velocity_correction_scaler();
                         addSlack(std::string(multInfo.getName())
                                          .replace(0, 6, "gamma"),
-                                vcBounds);
+                                vcBounds, vcScaler);
                     }
                     ++multIndexThisConstraint;
                 }
@@ -219,7 +225,7 @@ MocoCasOCProblem::MocoCasOCProblem(const MocoCasADiSolver& mocoCasADiSolver,
 
     for (const auto& paramName : problemRep.createParameterNames()) {
         const auto& param = problemRep.getParameter(paramName);
-        addParameter(paramName, convertBounds(param.getBounds()));
+        addParameter(paramName, convertBounds(param.getBounds()), param.getVariableScaler());
     }
 
     const auto costNames = problemRep.createCostNames();

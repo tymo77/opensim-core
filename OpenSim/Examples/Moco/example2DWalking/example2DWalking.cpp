@@ -45,6 +45,10 @@
 #include <OpenSim/Common/STOFileAdapter.h>
 #include <OpenSim/Moco/osimMoco.h>
 
+//std::string SCALING_METHOD = "none";
+std::string SCALING_METHOD = "info";
+//std::string SCALING_METHOD = "bounds";
+
 using namespace OpenSim;
 
 /// Set a coordinate tracking problem where the goal is to minimize the
@@ -175,6 +179,24 @@ MocoSolution gaitTracking(double controlEffortWeight = 10,
             {-15 * Pi / 180, 25 * Pi / 180});
     problem.setStateInfo("/jointset/lumbar/lumbar/value", {0, 20 * Pi / 180});
 
+    // Speeds
+    problem.setStateInfo("/jointset/knee_l/knee_angle_l/speed", {-50, 50}, {},
+            {}, 1.0 / 10.0);
+    problem.setStateInfo("/jointset/knee_r/knee_angle_r/speed", {-50, 50}, {},
+            {}, 1.0 / 10.0);
+    problem.setStateInfo("/jointset/ankle_l/ankle_angle_l/speed", {-50, 50}, {},
+            {}, 1.0 / 10.0);
+    problem.setStateInfo("/jointset/ankle_r/ankle_angle_r/speed", {-50, 50}, {},
+            {}, 1.0 / 10.0);
+    problem.setStateInfo("/jointset/hip_l/hip_flexion_l/speed", {-50, 50}, {},
+            {}, 1.0 / 3.0);
+    problem.setStateInfo("/jointset/hip_r/hip_flexion_r/speed", {-50, 50}, {},
+            {}, 1.0 / 3.0);
+
+    // Lumbar actuator scaling.
+    problem.setControlInfo("/lumbarAct", {-150.0, 150.0}, {}, {}, 100.0);
+  
+
     // Configure the solver.
     // =====================
     MocoCasADiSolver& solver = study.updSolver<MocoCasADiSolver>();
@@ -185,6 +207,7 @@ MocoSolution gaitTracking(double controlEffortWeight = 10,
     solver.set_optim_constraint_tolerance(1e-4);
     solver.set_optim_max_iterations(1000);
     solver.set_parallel(1);
+    solver.set_scaling_method(SCALING_METHOD);
 
     // Solve problem.
     // ==============
@@ -289,7 +312,7 @@ void gaitPrediction(const MocoSolution& gaitTrackingSolution) {
 
     // Bounds.
     // =======
-    problem.setTimeBounds(0, {0.4, 0.6});
+    problem.setTimeInfo(0, {0.4, 0.6});
     problem.setStateInfo("/jointset/groundPelvis/pelvis_tilt/value",
             {-20 * Pi / 180, -10 * Pi / 180});
     problem.setStateInfo("/jointset/groundPelvis/pelvis_tx/value", {0, 1});
@@ -320,6 +343,7 @@ void gaitPrediction(const MocoSolution& gaitTrackingSolution) {
     solver.set_optim_max_iterations(1000);
     // Use the solution from the tracking simulation as initial guess.
     solver.setGuess(gaitTrackingSolution);
+    solver.set_scaling_method(SCALING_METHOD);
 
     // Solve problem.
     // ==============

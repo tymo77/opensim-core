@@ -34,7 +34,7 @@ class OSIMMOCO_API MocoVariableInfo : public Object {
 public:
     MocoVariableInfo();
     MocoVariableInfo(const std::string& name, const MocoBounds&,
-            const MocoInitialBounds&, const MocoFinalBounds&);
+            const MocoInitialBounds&, const MocoFinalBounds&, double variable_scaler = 1.0);
 
     /// @details Note: the return value is constructed fresh on every call from
     /// the internal property. Avoid repeated calls to this function.
@@ -48,6 +48,8 @@ public:
         return MocoFinalBounds(getProperty_final_bounds());
     }
 
+    double getVariableScaler() const { return get_variable_scaler(); }
+
     void setBounds(const MocoBounds& bounds) {
         set_bounds(bounds.getAsArray());
     }
@@ -56,6 +58,9 @@ public:
     }
     void setFinalBounds(const MocoFinalBounds& bounds) {
         set_final_bounds(bounds.getAsArray());
+    }
+    void setScalers(double variable_scaler) {
+        set_variable_scaler(variable_scaler);
     }
 
     /// Throws an exception if initial and final bounds are not within bounds.
@@ -75,6 +80,10 @@ protected:
     OpenSim_DECLARE_LIST_PROPERTY_ATMOST(final_bounds, double, 2,
             "1 value: required final value. "
             "2 values: lower, upper bounds on final value.");
+    OpenSim_DECLARE_PROPERTY(variable_scaler, double,
+            "CasADi solver implementation of this variable will be "
+            "scaled by this value. It is best that all problem variables "
+            "have similar magnitude after scaling. (Default: 1)");
 
 private:
     void constructProperties();

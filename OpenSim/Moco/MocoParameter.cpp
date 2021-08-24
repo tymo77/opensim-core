@@ -71,6 +71,7 @@ void MocoParameter::constructProperties() {
     constructProperty_component_paths();
     constructProperty_property_name("");
     constructProperty_property_element();
+    constructProperty_variable_scaler(1.0);
 }
 
 void MocoParameter::initializeOnModel(Model& model) const {

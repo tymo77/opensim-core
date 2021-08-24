@@ -16,6 +16,7 @@
  * limitations under the License.                                             *
  * -------------------------------------------------------------------------- */
 #include "CasOCTranscription.h"
+#include <iostream>
 
 using casadi::DM;
 using casadi::MX;
@@ -23,6 +24,21 @@ using casadi::MXVector;
 using casadi::Slice;
 
 namespace CasOC {
+
+void printNonZeros(const std::string&  fn, const casadi::DM& dmmatrix) {
+    auto nzs = dmmatrix.get_nonzeros();
+
+    std::ofstream outfile;
+    outfile.open(fn + ".log");
+
+
+    int i = 0;
+    for (auto it = nzs.begin(); it != nzs.end(); ++it) {
+        outfile << i++ << " " << *it << std::endl;
+    }
+
+    outfile.close();
+}
 
 // http://casadi.sourceforge.net/api/html/d7/df0/solvers_2callback_8py-example.html
 
@@ -187,19 +203,32 @@ void Transcription::createVariablesAndSetBounds(const casadi::DM& grid,
     initializeVarInfo(m_scalingMultiplier);
     initializeVarInfo(m_scalingShifter);
 
-    setVariableBoundsAndScale(initial_time, 0, 0, m_problem.getTimeInitialBounds());
-    setVariableBoundsAndScale(final_time, 0, 0, m_problem.getTimeFinalBounds());
+    TimeInfo timeInfo = m_problem.getTimeInfo();
+    TimeInfo initTimeInfo;
+    TimeInfo finalTimeInfo;
+    initTimeInfo.bounds = timeInfo.initialBounds;
+    initTimeInfo.variable_scaler = timeInfo.variable_scaler;
+    finalTimeInfo.bounds = timeInfo.finalBounds;
+    finalTimeInfo.variable_scaler = timeInfo.variable_scaler;
+
+    setVariableBounds(initial_time, 0, 0, timeInfo.initialBounds);
+    setVariableBounds(final_time, 0, 0, timeInfo.finalBounds);
+    setVariableScale(initial_time, 0, 0, initTimeInfo);
+    setVariableScale(final_time, 0, 0, finalTimeInfo);
 
     {
         const auto& stateInfos = m_problem.getStateInfos();
         int is = 0;
         for (const auto& info : stateInfos) {
-            setVariableBoundsAndScale(
-                    states, is, Slice(1, m_numGridPoints - 1), info.bounds);
+            auto interior_slice = Slice(1, m_numGridPoints - 1);
+            setVariableBounds(states, is, interior_slice, info.bounds);
+            setVariableScale(states, is, interior_slice, info);
             // The "0" grabs the first column (first mesh point).
-            setVariableBoundsAndScale(states, is, 0, info.initialBounds);
+            setVariableBounds(states, is, 0, info.initialBounds);
+            setVariableScale(states, is, 0, info);
             // The "-1" grabs the last column (last mesh point).
-            setVariableBoundsAndScale(states, is, -1, info.finalBounds);
+            setVariableBounds(states, is, -1, info.finalBounds);
+            setVariableScale(states, is, -1, info);
             ++is;
         }
     }
@@ -207,10 +236,16 @@ void Transcription::createVariablesAndSetBounds(const casadi::DM& grid,
         const auto& controlInfos = m_problem.getControlInfos();
         int ic = 0;
         for (const auto& info : controlInfos) {
-            setVariableBoundsAndScale(
-                    controls, ic, Slice(1, m_numGridPoints - 1), info.bounds);
-            setVariableBoundsAndScale(controls, ic, 0, info.initialBounds);
-            setVariableBoundsAndScale(controls, ic, -1, info.finalBounds);
+            auto interior_slice = Slice(1, m_numGridPoints - 1);
+            setVariableBounds(
+                    controls, ic, interior_slice, info.bounds);
+            setVariableScale(controls, ic, interior_slice, info);
+
+            setVariableBounds(controls, ic, 0, info.initialBounds);
+            setVariableScale(controls, ic, 0, info);
+
+            setVariableBounds(controls, ic, -1, info.finalBounds);
+            setVariableScale(controls, ic, -1, info);
             ++ic;
         }
     }
@@ -218,10 +253,16 @@ void Transcription::createVariablesAndSetBounds(const casadi::DM& grid,
         const auto& multiplierInfos = m_problem.getMultiplierInfos();
         int im = 0;
         for (const auto& info : multiplierInfos) {
-            setVariableBoundsAndScale(multipliers, im, Slice(1, m_numGridPoints - 1),
+            auto interior_slice = Slice(1, m_numGridPoints - 1);
+            setVariableBounds(multipliers, im, interior_slice,
                     info.bounds);
-            setVariableBoundsAndScale(multipliers, im, 0, info.initialBounds);
-            setVariableBoundsAndScale(multipliers, im, -1, info.finalBounds);
+            setVariableScale(multipliers, im, interior_slice, info);
+
+            setVariableBounds(multipliers, im, 0, info.initialBounds);
+            setVariableScale(multipliers, im, 0, info);
+
+            setVariableBounds(multipliers, im, -1, info.finalBounds);
+            setVariableScale(multipliers, im, -1, info);
             ++im;
         }
     }
@@ -229,21 +270,33 @@ void Transcription::createVariablesAndSetBounds(const casadi::DM& grid,
         if (m_problem.isDynamicsModeImplicit()) {
             // "Slice()" grabs everything in that dimension (like ":" in
             // Matlab).
-            setVariableBoundsAndScale(derivatives, Slice(0, m_problem.getNumSpeeds()),
-                    Slice(), m_solver.getImplicitMultibodyAccelerationBounds());
+            Slice rowSlice = Slice(0, m_problem.getNumSpeeds());
+            Slice colSlice = Slice();
+            DerivativeInfo dinfo;
+            dinfo.bounds = m_solver.getImplicitMultibodyAccelerationBounds();
+            dinfo.variable_scaler =
+                    m_solver.getImplicitMultibodyAccelerationsScaler();
+            setVariableBounds(derivatives, rowSlice, colSlice, dinfo.bounds);
+            setVariableScale(derivatives, rowSlice, colSlice, dinfo);
         }
         if (m_problem.getNumAuxiliaryResidualEquations()) {
-            setVariableBoundsAndScale(derivatives,
-                Slice(m_problem.getNumAccelerations(),
-                      m_problem.getNumDerivatives()),
-                Slice(), m_solver.getImplicitAuxiliaryDerivativeBounds());
+            Slice rowSlice = Slice(m_problem.getNumAccelerations(),
+                    m_problem.getNumDerivatives());
+            Slice colSlice = Slice();
+            DerivativeInfo dinfo;
+            dinfo.bounds = m_solver.getImplicitAuxiliaryDerivativeBounds();
+            dinfo.variable_scaler =
+                    m_solver.getImplicitAuxiliaryDerivativesScaler();
+            setVariableBounds(derivatives, rowSlice, colSlice, dinfo.bounds);
+            setVariableScale(derivatives, rowSlice, colSlice, dinfo);
         }
     }
     {
         const auto& slackInfos = m_problem.getSlackInfos();
         int isl = 0;
         for (const auto& info : slackInfos) {
-            setVariableBoundsAndScale(slacks, isl, Slice(), info.bounds);
+            setVariableBounds(slacks, isl, Slice(), info.bounds);
+            setVariableScale(slacks, isl, Slice(), info);
             ++isl;
         }
     }
@@ -251,7 +304,8 @@ void Transcription::createVariablesAndSetBounds(const casadi::DM& grid,
         const auto& paramInfos = m_problem.getParameterInfos();
         int ip = 0;
         for (const auto& info : paramInfos) {
-            setVariableBoundsAndScale(parameters, ip, 0, info.bounds);
+            setVariableBounds(parameters, ip, 0, info.bounds);
+            setVariableScale(parameters, ip, 0, info);
             ++ip;
         }
     }
@@ -672,17 +726,25 @@ Solution Transcription::solve(const Iterate& guessOrig) {
     auto objective_scaled = MX::substitute(objective, {x_sym}, {xs_scaled});
     auto constraint_scaled = MX::substitute(g, {x_sym}, {xs_scaled});
 
-    casadi::Function objFunc_scaled("objective_varscaled", {x_sym}, {objective_scaled});
-    casadi::Function conFunc_scaled("constraint_varscaled", {x_sym}, {constraint_scaled});
+    casadi::Function objFunc_scaled(
+            "objective_varscaled", {x_sym}, {objective_scaled});
+    casadi::Function conFunc_scaled(
+            "constraint_varscaled", {x_sym}, {constraint_scaled});
     casadi::Function objFunc("objective", {x_sym}, {objective});
+    casadi::Function conFunc("constraint", {x_sym}, {g});
 
     casadi::DMVector f_scaled_0;
     casadi::DMVector f_0;
+    casadi::DMVector g_scaled_0;
+    casadi::DMVector g_0;
     objFunc_scaled.call({x0_scaled}, f_scaled_0);
     objFunc.call({x0}, f_0);
+    conFunc_scaled.call({x0_scaled}, g_scaled_0);
+    conFunc.call({x0}, g_0);
 
     std::cout << "Unscaled objective at initial guess: " << f_0 << std::endl;
-    std::cout << "Scaled objective at initial guess: " << f_scaled_0 << std::endl;
+    std::cout << "Scaled objective at initial guess: " << f_scaled_0
+              << std::endl;
 
     casadi::MXVector f_scaled;
     casadi::MXVector g_scaled;
@@ -691,6 +753,49 @@ Solution Transcription::solve(const Iterate& guessOrig) {
 
     nlp.emplace(std::make_pair("f", f_scaled[0]));
     nlp.emplace(std::make_pair("g", g_scaled[0]));
+
+    auto grad_f = casadi::MX::gradient(objective, x_sym);
+    auto grad_f_scaled = casadi::MX::gradient(f_scaled[0], x_sym);
+
+    casadi::DMVector grad_f_0;
+    casadi::Function grad_f_function("grad_f", {x_sym}, {grad_f});
+    grad_f_function.call({x0}, grad_f_0);
+
+    casadi::DMVector grad_f_0_scaled;
+    casadi::Function grad_f_scaled_function(
+            "grad_f_scaled", {x_sym}, {grad_f_scaled});
+    grad_f_scaled_function.call({x0_scaled}, grad_f_0_scaled);
+    
+    auto J_g_scaled =
+            casadi::MX::jacobian(g_scaled[0], x_sym);
+    auto J_g = casadi::MX::jacobian(g, x_sym);
+
+    casadi::DMVector J_g_scaled_0, J_g_0;
+    casadi::Function J_g_scaled_function(
+            "jacobian_g_scaled", {x_sym}, {J_g_scaled});
+    casadi::Function J_g_function("jacobian_g", {x_sym}, {J_g});
+
+    J_g_scaled_function.call({x0}, J_g_scaled_0);
+    J_g_function.call({x0}, J_g_0);
+
+    conFunc_scaled.call({x0_scaled}, g_scaled_0);
+    conFunc.call({x0}, g_0);
+
+    //printNonZeros("nz_jacobian_g_0_scaled", J_g_scaled_0[0]);
+    //printNonZeros("nz_jacobian_g_0",        J_g_0[0]);
+    //printNonZeros("nz_grad_f_0_scaled",     grad_f_0_scaled[0]);
+    //printNonZeros("nz_grad_f_0",            grad_f_0[0]);
+    //printNonZeros("nz_x_0",                 x0);
+    //printNonZeros("nz_x_0_scaled",          x0_scaled);
+    //printNonZeros("nz_g_0_scaled",          g_scaled_0[0]);
+    //printNonZeros("nz_g_0",                 g_0[0]);
+
+    //printNonZeros("nz_scaling_mult", flattenVariables(m_scalingMultiplier));
+    //printNonZeros("nz_scaling_shift", flattenVariables(m_scalingShifter));
+
+    //J_g_0[0].sparsity().to_file("sp_jacobian_g.mtx");
+    //J_g_scaled_0[0].sparsity().to_file("sp_jacobian_g_scaled.mtx");
+
 
     if (!m_solver.getWriteSparsity().empty()) {
         const auto prefix = m_solver.getWriteSparsity();
@@ -730,14 +835,33 @@ Solution Transcription::solve(const Iterate& guessOrig) {
     // -------------------------
     Solution solution = m_problem.createIterate<Solution>();
     const auto finalVariables = nlpResult.at("x");
-    solution.variables = unScaleVariables(expandVariables(finalVariables));
+    const auto finalVariables_unscaled =
+            flattenVariables(unScaleVariables(expandVariables(finalVariables)));
+    solution.variables = expandVariables(finalVariables_unscaled);
     solution.objective = nlpResult.at("f").scalar();
 
-    casadi::DMVector finalVarsDMV{finalVariables};
+    casadi::DMVector finalVarsDMV{finalVariables_unscaled};
     casadi::Function objectiveFunc("objective", {x_sym}, {m_objectiveTerms});
     casadi::DMVector objectiveOut;
     objectiveFunc.call(finalVarsDMV, objectiveOut);
     solution.objective_breakdown = expandObjectiveTerms(objectiveOut[0]);
+
+    VectorDM J_g_scaled_sol, grad_f_sol_scaled, g_scaled_sol, g_sol;
+    J_g_scaled_function.call({x0}, J_g_scaled_sol);
+
+    J_g_scaled_function.call({finalVariables}, J_g_scaled_sol);
+    grad_f_scaled_function.call({finalVariables}, grad_f_sol_scaled);
+    conFunc_scaled.call({finalVariables}, g_scaled_sol);
+    conFunc.call({finalVariables_unscaled}, g_sol);
+    
+
+    //printNonZeros("nz_jacobian_g_sol_scaled", J_g_scaled_sol[0]);
+    //printNonZeros("nz_grad_f_sol_scaled",     grad_f_sol_scaled[0]);
+    //printNonZeros("nz_g_sol_scaled",          g_scaled_sol[0]);
+    //printNonZeros("nz_g_sol",                 g_sol[0]);
+    //printNonZeros("nz_x_sol_scaled",          finalVariables);
+    //printNonZeros("nz_lamx_sol_scaled",       nlpResult.at("lam_x"));
+    //printNonZeros("nz_lamg_sol_scaled",       nlpResult.at("lam_g"));
 
     solution.times = createTimes(
             solution.variables[initial_time], solution.variables[final_time]);
@@ -746,14 +870,22 @@ Solution Transcription::solve(const Iterate& guessOrig) {
     // Print breakdown of objective.
     printObjectiveBreakdown(solution, objectiveOut[0]);
 
-    if (!solution.stats.at("success")) {
+    if (true) {
 
         // For some reason, nlpResult.at("g") is all 0. So we calculate the
         // constraints ourselves.
         casadi::Function constraintFunc("constraints", {x_sym}, {g});
         casadi::DMVector constraintsOut;
         constraintFunc.call(finalVarsDMV, constraintsOut);
+
+        
+
+        OpenSim::Logger::Level origLoggerLevel = OpenSim::Logger::getLevel();
+        OpenSim::Logger::setLevel(OpenSim::Logger::Level::Debug);
+        
         printConstraintValues(solution, expandConstraints(constraintsOut[0]));
+
+        OpenSim::Logger::setLevel(origLoggerLevel);
     }
     return solution;
 }

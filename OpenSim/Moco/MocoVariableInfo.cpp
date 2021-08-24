@@ -27,11 +27,13 @@ MocoVariableInfo::MocoVariableInfo() {
 
 MocoVariableInfo::MocoVariableInfo(const std::string& name,
         const MocoBounds& bounds, const MocoInitialBounds& initial,
-        const MocoFinalBounds& final) : MocoVariableInfo() {
+        const MocoFinalBounds& final,
+        double variable_scaler) : MocoVariableInfo() {
     setName(name);
     set_bounds(bounds.getAsArray());
     set_initial_bounds(initial.getAsArray());
     set_final_bounds(final.getAsArray());
+    set_variable_scaler(variable_scaler);
     validate();
 }
 
@@ -74,6 +76,7 @@ void MocoVariableInfo::printDescription() const {
     if (final.isSet()) {
         str += fmt::format(" final: {}", final);
     }
+    str += fmt::format(" scaler: {}", get_variable_scaler());
     log_cout(str);
 }
 
@@ -81,4 +84,5 @@ void MocoVariableInfo::constructProperties() {
     constructProperty_bounds();
     constructProperty_initial_bounds();
     constructProperty_final_bounds();
+    constructProperty_variable_scaler(1.0);
 }

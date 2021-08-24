@@ -78,20 +78,20 @@ public:
 
 protected:
 #ifndef SWIG
-    struct TimeInfo {
+    struct MocoTimeInfo {
         double initial = -SimTK::Infinity;
         double final = SimTK::Infinity;
         int numMeshIntervals = -1;
     };
-    /// This function updates a TimeInfo so the initial and final times are
+    /// This function updates a MocoTimeInfo so the initial and final times are
     /// within the data times provided. If the user provided a value for the
     /// initial_time or final_time properties, then this ensures the
     /// user-provided times are within the data times, and the info is updated
     /// to use the user-provided times.
-    /// Finally, the TimeInfo.numMeshPoints field is updated based on the
+    /// Finally, the MocoTimeInfo.numMeshPoints field is updated based on the
     /// mesh_interval property.
     void updateTimeInfo(const std::string& dataLabel, const double& dataInitial,
-            const double& dataFinal, TimeInfo& info) const;
+            const double& dataFinal, MocoTimeInfo& info) const;
 
     /// Get the canonicalized absolute pathname with respect to the setup file
     /// directory from a given pathname which can be relative or absolute. Here,

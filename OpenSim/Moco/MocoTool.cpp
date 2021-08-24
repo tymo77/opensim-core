@@ -31,7 +31,7 @@ void MocoTool::constructProperties() {
 
 void MocoTool::updateTimeInfo(const std::string& dataLabel,
         const double& dataInitial, const double& dataFinal,
-        TimeInfo& info) const {
+        MocoTimeInfo& info) const {
     double initial;
     double final;
     if (!getProperty_initial_time().empty()) {

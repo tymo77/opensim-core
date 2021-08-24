@@ -124,6 +124,9 @@ public:
     the internal property. Avoid repeated calls to this function. */
     MocoBounds getBounds() const
     {   return get_MocoBounds(); }
+    double getVariableScaler() const { 
+        return get_variable_scaler();
+    }
     std::string getPropertyName() const
     {   return get_property_name(); }
     std::vector<std::string> getComponentPaths() const
@@ -137,6 +140,9 @@ public:
     }
     void setBounds(const MocoBounds& bounds)
     {   set_MocoBounds(bounds); }
+    void setVariableScaler(double variable_scaler) {
+        set_variable_scaler(variable_scaler);
+    }
     void setPropertyName(const std::string& propertyName)
     {   set_property_name(propertyName); }
     void appendComponentPath(const std::string& componentPath)
@@ -168,7 +174,11 @@ private:
     OpenSim_DECLARE_PROPERTY(property_name, std::string, "The name of the "
         "model property associated with the MocoParameter.");
     OpenSim_DECLARE_OPTIONAL_PROPERTY(property_element, int, "For non-scalar "
-        "model properties, the index of the element to be optimized.");
+            "model properties, the index of the element to be optimized.");
+    OpenSim_DECLARE_PROPERTY(
+            variable_scaler, double,
+            "The variable used to scale the parameter in the solver.");
+
 
     mutable std::vector<SimTK::ReferencePtr<AbstractProperty>> m_property_refs;
     enum DataType {

@@ -61,7 +61,7 @@ void MocoProblemRep::initialize() {
     m_implicit_component_refs.clear();
     m_implicit_residual_refs.clear();
 
-    if (!getTimeInitialBounds().isSet() && !getTimeFinalBounds().isSet()) {
+    if (!getTimeInfo().getInitialBounds().isSet() && !getTimeInfo().getFinalBounds().isSet()) {
         log_warn("No time bounds set.");
     }
 
@@ -228,7 +228,7 @@ void MocoProblemRep::initialize() {
                 std::string name = fmt::format("cid{}_p{}", cid, i);
                 kc_perr_names.push_back(name);
                 MocoVariableInfo info("lambda_" + name, multBounds,
-                        multInitBounds, multFinalBounds);
+                        multInitBounds, multFinalBounds, ph0.get_multiplier_scalers());
                 multInfos.push_back(info);
             }
             for (int i = 0; i < mv; ++i) {
@@ -525,8 +525,8 @@ void MocoProblemRep::initialize() {
     }
 
     MocoProblemInfo problemInfo;
-    problemInfo.minInitialTime = getTimeInitialBounds().getLower();
-    problemInfo.maxFinalTime = getTimeFinalBounds().getUpper();
+    problemInfo.minInitialTime = getTimeInfo().getInitialBounds().getLower();
+    problemInfo.maxFinalTime = getTimeInfo().getFinalBounds().getUpper();
 
     // Auxiliary path constraints.
     // ---------------------------
@@ -552,11 +552,9 @@ void MocoProblemRep::initialize() {
 const std::string& MocoProblemRep::getName() const {
     return m_problem->getName();
 }
-MocoInitialBounds MocoProblemRep::getTimeInitialBounds() const {
-    return m_problem->getPhase(0).get_time_initial_bounds();
-}
-MocoFinalBounds MocoProblemRep::getTimeFinalBounds() const {
-    return m_problem->getPhase(0).get_time_final_bounds();
+
+const MocoVariableInfo& MocoProblemRep::getTimeInfo() const {
+    return m_problem->getPhase(0).getTimeInfo();
 }
 std::vector<std::string> MocoProblemRep::createStateVariableNamesInSystemOrder(
         std::unordered_map<int, int>& yIndexMap) const {

@@ -63,7 +63,8 @@ public:
     /// initial time to fall within a range, pass the lower and upper bounds
     /// to the constructor of MocoInitialBounds. Likewise for MocoFinalBounds.
     /// This will overwrite bounds that were set previously, if any.
-    void setTimeBounds(const MocoInitialBounds&, const MocoFinalBounds&);
+    void setTimeInfo(const MocoInitialBounds&, const MocoFinalBounds&, 
+        double variable_scaler = 1.0);
     /// Find and print the names of all state variables containing a substring.
     void printStateNamesWithSubstring (const std::string& name);
     /// Set information about a single state variable in this phase.
@@ -130,7 +131,7 @@ public:
     /// this state variable.
     void setStateInfo(const std::string& name, const MocoBounds& bounds,
             const MocoInitialBounds& init = {},
-            const MocoFinalBounds& final = {});
+            const MocoFinalBounds& final = {}, double variable_scaler = 1.0);
     /// Set information for state variables whose names match the provided
     /// regular expression. You can use this to set bounds for all muscle
     /// activations, etc. Infos provided via setStateInfoPattern() take
@@ -141,7 +142,7 @@ public:
     /// variable.
     void setStateInfoPattern(const std::string& pattern,
             const MocoBounds& bounds, const MocoInitialBounds& init = {},
-            const MocoFinalBounds& final = {});
+            const MocoFinalBounds& final = {}, double variable_scaler = 1.0);
     /// Find and print the names of all control variables containing a substring.
     void printControlNamesWithSubstring(const std::string& name);
     /// Set information about a single control variable in this phase.
@@ -154,12 +155,16 @@ public:
     /// are used for the bounds over the phase. By default, non-ScalarActuators
     /// are unconstrained.
     void setControlInfo(const std::string& name, const MocoBounds&,
-            const MocoInitialBounds& = {}, const MocoFinalBounds& = {});
+            const MocoInitialBounds& = {}, const MocoFinalBounds& = {},
+            double variable_scaler = 1.0);
 
     /// Set the bounds on generalized speed state variables
     /// for which explicit bounds are not set.
     void setDefaultSpeedBounds(const MocoBounds& bounds) {
         set_default_speed_bounds(bounds);
+    }
+    void setDefaultSpeedScalers(double variable_scaler) {
+        set_default_speed_scaler(variable_scaler);
     }
     /// Set information for control variables whose names match the provided
     /// regular expression. You can use this to set bounds for all muscle
@@ -170,7 +175,8 @@ public:
     /// patterns, the info provided with the last pattern is used for that
     /// control variable.
     void setControlInfoPattern(const std::string& pattern, const MocoBounds&,
-            const MocoInitialBounds& = {}, const MocoFinalBounds& = {});
+            const MocoInitialBounds& = {}, const MocoFinalBounds& = {},
+            double variable_scaler = 1.0);
     /// For muscles without explicit activation bounds, set the bounds for
     /// muscle activation (if activation dynamics are enabled) from the bounds
     /// for muscle control (excitation), using min/max control if explicit
@@ -190,6 +196,9 @@ public:
     /// MocoVariableInfo%s for each Lagrange multiplier in the phase.
     void setMultiplierBounds(const MocoBounds& bounds) {
         set_multiplier_bounds(bounds);
+    }
+    void setMultiplierScalers(double variable_scaler) {
+        set_multiplier_scalers(variable_scaler);
     }
     /// Add a parameter to this phase.
     /// Parameter variables must have a name (MocoParameter::setName()), and the
@@ -308,9 +317,7 @@ public:
 
     /// @details Note: the return value is constructed fresh on every call from
     /// the internal property. Avoid repeated calls to this function.
-    MocoInitialBounds getTimeInitialBounds() const;
-    /// @copydoc getTimeInitialBounds()
-    MocoFinalBounds getTimeFinalBounds() const;
+    const MocoVariableInfo& getTimeInfo() const;
     /// Access explicit state infos provided to this phase. For some state
     /// variables, default bounds are obtained from the model.
     /// This function does *not* provide such automatically-populated bounds
@@ -349,19 +356,20 @@ public:
 protected: // Protected so that doxygen shows the properties.
     OpenSim_DECLARE_PROPERTY(
             model, ModelProcessor, "OpenSim Model to provide dynamics.");
-    OpenSim_DECLARE_PROPERTY(
-            time_initial_bounds, MocoInitialBounds, "Bounds on initial value.");
-    OpenSim_DECLARE_PROPERTY(
-            time_final_bounds, MocoFinalBounds, "Bounds on final value.");
     OpenSim_DECLARE_PROPERTY(default_speed_bounds, MocoBounds,
             "Bounds for coordinate speeds if not specified in "
             "state_infos (default: [-50, 50]).");
+    OpenSim_DECLARE_PROPERTY(default_speed_scaler, double,
+            "Scaler for coordinate speeds if not specified in "
+            "state_infos (default: 1.0).");
     OpenSim_DECLARE_PROPERTY(bound_activation_from_excitation, bool,
             "For muscles without explicit activation bounds, set the bounds "
             "for muscle activation (if activation dynamics are enabled) from " 
             "the bounds for muscle control (excitation), using "             
             "min/max control if explicit control bounds are not "            
             "provided. (default: true).");
+    OpenSim_DECLARE_PROPERTY(
+            time_info, MocoVariableInfo, "The time variables' bounds.");
     OpenSim_DECLARE_LIST_PROPERTY(
             state_infos, MocoVariableInfo, "The state variables' bounds.");
     OpenSim_DECLARE_LIST_PROPERTY(state_infos_pattern, MocoVariableInfo,
@@ -389,6 +397,10 @@ protected: // Protected so that doxygen shows the properties.
             "Variable info to apply to all Lagrange multipliers in the "
             "problem. "
             "The default bounds are [-1000 1000].");
+    OpenSim_DECLARE_PROPERTY(multiplier_scalers, double,
+            "Variable info to apply to all Lagrange multipliers in the "
+            "problem. "
+            "The default is 1.0 (none).");
 
 private:
     void constructProperties();
@@ -438,31 +450,35 @@ public:
     /// @see MocoPhase::setModelProcessor().
     void setModelProcessor(ModelProcessor model);
     /// Set time bounds for phase 0.
-    void setTimeBounds(const MocoInitialBounds&, const MocoFinalBounds&);
+    void setTimeInfo(const MocoInitialBounds&, const MocoFinalBounds&, double variable_scaler = 1.0);
     /// Find and print the names of all state variables containing a substring.
     void printStateNamesWithSubstring(const std::string& name);
     /// Set bounds for a state variable for phase 0.
     void setStateInfo(const std::string& name, const MocoBounds&,
-            const MocoInitialBounds& = {}, const MocoFinalBounds& = {});
+            const MocoInitialBounds& = {}, const MocoFinalBounds& = {},
+            double variable_scaler = 1.0);
     /// Set bounds for all state variables for phase 0 whose path matches
     /// the provided pattern.
     // TODO: We tried to give an example regex but it had characters that caused
     // doxygen to not produce documentation for this entire file.
     void setStateInfoPattern(const std::string& pattern,
             const MocoBounds& bounds, const MocoInitialBounds& init = {},
-            const MocoFinalBounds& final = {});
+            const MocoFinalBounds& final = {}, double variable_scaler = 1.0);
     /// Find and print the names of all state variables containing a substring.
     void printControlNamesWithSubstring(const std::string& name);
     /// Set bounds for a control variable for phase 0.
     void setControlInfo(const std::string& name, const MocoBounds&,
-            const MocoInitialBounds& = {}, const MocoFinalBounds& = {});
+            const MocoInitialBounds& = {}, const MocoFinalBounds& = {},
+            double variable_scaler = 1.0);
     /// Set bounds for a control variable using a regular expression.
     void setControlInfoPattern(const std::string& pattern, const MocoBounds&,
-            const MocoInitialBounds& = {}, const MocoFinalBounds& = {});
+            const MocoInitialBounds& = {}, const MocoFinalBounds& = {},
+            double variable_scaler = 1.0);
     /// Set bounds for the kinematic constraints in phase 0.
     void setKinematicConstraintBounds(const MocoBounds& bounds);
     /// Set bounds for the Lagrange multipliers in phase 0.
     void setMultiplierBounds(const MocoBounds& bounds);
+    void setMultiplierScaler(double variable_scaler);
     /// Add a parameter variable for phase 0.
     /// @see MocoPhase::addParameter()
     template <typename MocoParamType = MocoParameter, typename... Args>

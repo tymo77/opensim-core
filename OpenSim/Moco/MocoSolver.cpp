@@ -25,8 +25,8 @@ using namespace OpenSim;
 
 MocoTrajectory MocoSolver::createGuessTimeStepping() const {
     const auto& probrep = getProblemRep();
-    const auto& initialTime = probrep.getTimeInitialBounds().getUpper();
-    const auto& finalTime = probrep.getTimeFinalBounds().getLower();
+    const auto& initialTime = probrep.getTimeInfo().getInitialBounds().getUpper();
+    const auto& finalTime = probrep.getTimeInfo().getFinalBounds().getLower();
     OPENSIM_THROW_IF_FRMOBJ(finalTime <= initialTime, Exception,
             "Expected lower bound on final time to be greater than "
             "upper bound on initial time, but "

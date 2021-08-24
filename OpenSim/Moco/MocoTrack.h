@@ -273,7 +273,7 @@ public:
 
 private:
     Model m_model;
-    TimeInfo m_timeInfo;
+    MocoTimeInfo m_timeInfo;
 
     void constructProperties();
 

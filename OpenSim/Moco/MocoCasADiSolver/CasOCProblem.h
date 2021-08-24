@@ -38,6 +38,9 @@ class MocoCasADiSolver;
 /// CasADi Optimal Control.
 namespace CasOC {
 
+// Enumerated type for communicating the variable scaling method.
+enum class ScaleMethod { scale_off, scale_bounds, scale_var_info };
+
 struct Bounds {
     Bounds() = default;
     Bounds(double lower, double upper) : lower(lower), upper(upper) {}
@@ -51,33 +54,34 @@ struct Bounds {
 /// muscle activity).
 enum class StateType { Coordinate, Speed, Auxiliary };
 enum class KinematicLevel { Position, Velocity, Acceleration };
-struct StateInfo {
+struct CasOCVarInfo {
     std::string name;
+    Bounds bounds;
+    double variable_scaler;
+};
+struct StateInfo : CasOCVarInfo {
     StateType type;
-    Bounds bounds;
     Bounds initialBounds;
     Bounds finalBounds;
 };
-struct ControlInfo {
-    std::string name;
-    Bounds bounds;
+struct ControlInfo : CasOCVarInfo {
     Bounds initialBounds;
     Bounds finalBounds;
 };
-struct MultiplierInfo {
-    std::string name;
-    Bounds bounds;
+struct MultiplierInfo : CasOCVarInfo {
     Bounds initialBounds;
     Bounds finalBounds;
     KinematicLevel level;
 };
-struct SlackInfo {
-    std::string name;
-    Bounds bounds;
-};
-struct ParameterInfo {
-    std::string name;
-    Bounds bounds;
+struct DerivativeInfo : CasOCVarInfo {};
+
+struct SlackInfo : CasOCVarInfo {};
+
+struct ParameterInfo : CasOCVarInfo {};
+
+struct TimeInfo : CasOCVarInfo {
+    Bounds initialBounds;
+    Bounds finalBounds;
 };
 
 struct EndpointInfo {
@@ -165,12 +169,33 @@ public:
     };
 
 protected:
+
+    /// Method for setting the scale method, given as a string. Default is none.
+    /// If no valid method is provided, we use the default.
+    void setScaleMethod(const std::string& method) {
+        if (method == "info") {
+            m_scaleMethod = ScaleMethod::scale_var_info;
+        } else if (method == "bounds") {
+            m_scaleMethod = ScaleMethod::scale_bounds;   
+        } else if (method == "none") {
+            m_scaleMethod = ScaleMethod::scale_off;
+        } else {
+            m_scaleMethod = ScaleMethod::scale_off;
+            std::cerr << "WARNING: CasOCProblem setScaleMethod line "
+                      << __LINE__
+                      << ". Invalid scale method. Using default 'none'."
+                      << std::endl;
+        }
+    }
+
     /// @name Interface for the user building the problem.
     /// Call the add/set functions in the constructor for your problem.
     /// @{
-    void setTimeBounds(Bounds initial, Bounds final) {
-        m_timeInitialBounds = std::move(initial);
-        m_timeFinalBounds = std::move(final);
+    void setTimeInfo(Bounds initial, Bounds final, double variable_scaler) {
+        m_timeInfo.initialBounds = std::move(initial);
+        m_timeInfo.finalBounds = std::move(final);
+        m_timeInfo.variable_scaler = variable_scaler;
+        
     }
     /// Add a differential state. The MultibodySystem function must provide
     /// differential equations for Speed and Auxiliary states. Currently, CasOC
@@ -179,11 +204,17 @@ protected:
     /// Speed, Auxiliary.
     // TODO: Create separate addDegreeOfFreedom() and addAuxiliaryState()?
     void addState(std::string name, StateType type, Bounds bounds,
-            Bounds initialBounds, Bounds finalBounds) {
+            Bounds initialBounds, Bounds finalBounds, double variable_scaler) {
         clipEndpointBounds(bounds, initialBounds);
         clipEndpointBounds(bounds, finalBounds);
-        m_stateInfos.push_back({std::move(name), type, std::move(bounds),
-                std::move(initialBounds), std::move(finalBounds)});
+        StateInfo sinfo;
+        sinfo.name = std::move(name);
+        sinfo.type = type;
+        sinfo.bounds = std::move(bounds);
+        sinfo.initialBounds = std::move(initialBounds);
+        sinfo.finalBounds = std::move(finalBounds);
+        sinfo.variable_scaler = variable_scaler;
+        m_stateInfos.push_back(sinfo);
         if (type == StateType::Coordinate)
             ++m_numCoordinates;
         else if (type == StateType::Speed)
@@ -193,20 +224,30 @@ protected:
     }
     /// Add an algebraic variable/"state" to the problem.
     void addControl(std::string name, Bounds bounds, Bounds initialBounds,
-            Bounds finalBounds) {
+            Bounds finalBounds, double variable_scaler) {
         clipEndpointBounds(bounds, initialBounds);
         clipEndpointBounds(bounds, finalBounds);
-        m_controlInfos.push_back({std::move(name), std::move(bounds),
-                std::move(initialBounds), std::move(finalBounds)});
+        ControlInfo cinfo;
+        cinfo.name = std::move(name);
+        cinfo.bounds = std::move(bounds);
+        cinfo.initialBounds = std::move(initialBounds);
+        cinfo.finalBounds = std::move(finalBounds);
+        cinfo.variable_scaler = variable_scaler;
+        m_controlInfos.push_back(cinfo);
     }
     void addKinematicConstraint(std::string multName, Bounds multbounds,
             Bounds multInitialBounds, Bounds multFinalBounds,
-            KinematicLevel kinLevel) {
+            KinematicLevel kinLevel, double variable_scaler) {
         clipEndpointBounds(multbounds, multInitialBounds);
         clipEndpointBounds(multbounds, multFinalBounds);
-        m_multiplierInfos.push_back({std::move(multName), std::move(multbounds),
-                std::move(multInitialBounds), std::move(multFinalBounds),
-                kinLevel});
+        MultiplierInfo multInfo;
+        multInfo.name = std::move(multName);
+        multInfo.bounds = std::move(multbounds);
+        multInfo.initialBounds = std::move(multInitialBounds);
+        multInfo.finalBounds = std::move(multFinalBounds);
+        multInfo.level = kinLevel;
+        multInfo.variable_scaler = variable_scaler;
+        m_multiplierInfos.push_back(multInfo);
 
         if (kinLevel == KinematicLevel::Position)
             ++m_numHolonomicConstraintEquations;
@@ -217,8 +258,12 @@ protected:
     }
     /// Add a slack velocity correction variable to the problem associated with
     /// a kinematic constraint in the model.
-    void addSlack(std::string name, Bounds bounds) {
-        m_slackInfos.push_back({std::move(name), std::move(bounds)});
+    void addSlack(std::string name, Bounds bounds, double variable_scaler) {
+        SlackInfo slackInfo;
+        slackInfo.name = std::move(name);
+        slackInfo.bounds = std::move(bounds);
+        slackInfo.variable_scaler = variable_scaler;
+        m_slackInfos.push_back(slackInfo);
     }
     /// Set if all kinematics are prescribed. In this case, do not add state
     /// variables for coordinates or speeds. The number of multibody dynamics
@@ -241,8 +286,12 @@ protected:
         m_kinematicConstraintBounds = std::move(bounds);
     }
     /// Add a constant (time-invariant) variable to the optimization problem.
-    void addParameter(std::string name, Bounds bounds) {
-        m_paramInfos.push_back({std::move(name), std::move(bounds)});
+    void addParameter(std::string name, Bounds bounds, double variable_scaler) {
+        ParameterInfo pinfo;
+        pinfo.name = std::move(name);
+        pinfo.bounds = std::move(bounds);
+        pinfo.variable_scaler = variable_scaler;
+        m_paramInfos.push_back(pinfo);
     }
     /// Add a cost term to the problem.
     void addCost(std::string name, int numIntegrals, int numOutputs) {
@@ -467,6 +516,7 @@ public:
 
     /// @name Interface for CasOC::Transcription.
     /// @{
+    ScaleMethod getScaleMethod() const { return m_scaleMethod; }
     int getNumStates() const { return (int)m_stateInfos.size(); }
     int getNumControls() const { return (int)m_controlInfos.size(); }
     int getNumParameters() const { return (int)m_paramInfos.size(); }
@@ -546,8 +596,7 @@ public:
     const Bounds& getKinematicConstraintBounds() const {
         return m_kinematicConstraintBounds;
     }
-    const Bounds& getTimeInitialBounds() const { return m_timeInitialBounds; }
-    const Bounds& getTimeFinalBounds() const { return m_timeFinalBounds; }
+    const TimeInfo& getTimeInfo() const { return m_timeInfo; }
     const std::vector<StateInfo>& getStateInfos() const { return m_stateInfos; }
     const std::vector<ControlInfo>& getControlInfos() const {
         return m_controlInfos;
@@ -602,8 +651,7 @@ private:
         endpoint.upper = std::min(b.upper, endpoint.upper);
     }
 
-    Bounds m_timeInitialBounds;
-    Bounds m_timeFinalBounds;
+    ScaleMethod m_scaleMethod;
     std::vector<StateInfo> m_stateInfos;
     int m_numCoordinates = 0;
     int m_numSpeeds = 0;
@@ -619,6 +667,7 @@ private:
     bool m_prescribedKinematics = false;
     int m_numMultibodyDynamicsEquationsIfPrescribedKinematics = 0;
     Bounds m_kinematicConstraintBounds;
+    TimeInfo m_timeInfo;
     std::vector<ControlInfo> m_controlInfos;
     std::vector<MultiplierInfo> m_multiplierInfos;
     std::vector<SlackInfo> m_slackInfos;

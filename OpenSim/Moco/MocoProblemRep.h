@@ -186,9 +186,7 @@ public:
             bool includeDerivatives) const;
     /// @details Note: the return value is constructed fresh on every call from
     /// the internal property. Avoid repeated calls to this function.
-    MocoInitialBounds getTimeInitialBounds() const;
-    /// @copydoc getTimeInitialBounds()
-    MocoFinalBounds getTimeFinalBounds() const;
+    const MocoVariableInfo& getTimeInfo() const;
     /// Get information for state variables. See MocoPhase::setStateInfo().
     const MocoVariableInfo& getStateInfo(const std::string& name) const;
     /// Get information for actuator controls.

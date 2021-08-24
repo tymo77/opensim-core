@@ -99,7 +99,7 @@ MocoStudy MocoTrack::initialize() {
         m_timeInfo.initial += 1e-3;
         m_timeInfo.final -= 1e-3;
     }
-    problem.setTimeBounds(m_timeInfo.initial, m_timeInfo.final);
+    problem.setTimeInfo(m_timeInfo.initial, m_timeInfo.final);
 
     // Configure solver.
     // -----------------

@@ -87,39 +87,78 @@ protected:
             const casadi::Matrix<casadi_int>& timeIndices) const;
 
     template <typename TRow, typename TColumn>
-    void setVariableBoundsAndScale(Var var, const TRow& rowIndices,
+    void setVariableBounds(Var var, const TRow& rowIndices,
             const TColumn& columnIndices, const Bounds& bounds) {
         if (bounds.isSet()) {
             const auto& lower = bounds.lower;
             m_lowerBounds[var](rowIndices, columnIndices) = lower;
             const auto& upper = bounds.upper;
             m_upperBounds[var](rowIndices, columnIndices) = upper;
+        } else {
+            const auto inf = std::numeric_limits<double>::infinity();
+            m_lowerBounds[var](rowIndices, columnIndices) = -inf;
+            m_upperBounds[var](rowIndices, columnIndices) = inf;
+        }
+    }
+
+    // Scale the given variables to the same range. Scale function
+    // is a linear scale between the bounds. Bounds so close as to be equality
+    // constraints are not scaled.
+    template <typename TRow, typename TColumn>
+    void setVariableScaleByBounds(Var var, const TRow& rowIndices,
+            const TColumn& columnIndices, const Bounds& bounds) {
+        if (bounds.isSet()) {
+            const auto& lower = bounds.lower;
+            const auto& upper = bounds.upper;
 
             // TODO: Best way to check for equality bounds?
+            // Check if bounds are so close they are an eq. constraint.
             double m, b;
-            if (abs(upper - lower) / abs(upper) > 1e-10) {
+            if (abs(upper - lower) / abs(upper) > 1e-10 ||
+                    abs(upper - lower) / abs(lower) > 1e-10 ||
+                    abs(upper - lower) > 1e-10
+                ) {
                 m = (SCALED_UB - SCALED_LB) / (upper - lower);
                 b = SCALED_LB - m * lower;
             } else {
                 m = 1.0;
-                b = 0.0;
+                b = (SCALED_LB + SCALED_UB)/2 - m * lower;
             }
-
-            //m_scalingMultiplier[var](rowIndices, columnIndices) = 1.0;
-            //m_scalingShifter[var](rowIndices, columnIndices) = 0.0;
 
             m_scalingMultiplier[var](rowIndices, columnIndices) = m;
             m_scalingShifter[var](rowIndices, columnIndices) = b;
 
         } else {
-            const auto inf = std::numeric_limits<double>::infinity();
-            m_lowerBounds[var](rowIndices, columnIndices) = -inf;
-            m_upperBounds[var](rowIndices, columnIndices) = inf;
-
             m_scalingMultiplier[var](rowIndices, columnIndices) = 1.0;
             m_scalingShifter[var](rowIndices, columnIndices) = 0.0;
         }
     }
+
+    template <typename TRow, typename TColumn>
+    void setVariableScale(Var var, const TRow& rowIndices,
+            const TColumn& columnIndices, const CasOCVarInfo& info) {
+
+        ScaleMethod method = m_problem.getScaleMethod();
+        switch (method) {
+        case ScaleMethod::scale_off: 
+            m_scalingMultiplier[var](rowIndices, columnIndices) = 1.0;
+            m_scalingShifter[var](rowIndices, columnIndices) = 0.0;
+            break;
+        case ScaleMethod::scale_bounds: 
+            setVariableScaleByBounds(var, rowIndices, columnIndices, info.bounds);
+            break;
+        case ScaleMethod::scale_var_info: 
+            // TODO Is this a good test? Or is it too arbitrary?
+            OPENSIM_THROW_IF(abs(info.variable_scaler) < 1e-10, OpenSim::Exception,
+                "Scaling variable is too close to zero.")
+
+            m_scalingMultiplier[var](rowIndices, columnIndices) = info.variable_scaler;
+            m_scalingShifter[var](rowIndices, columnIndices) = 0.0;
+            break;
+        }
+
+    }
+
 
     template <typename T>
     struct Constraints {
@@ -231,8 +270,6 @@ private:
     // Take the variables and linearly scale them to the fixed range.
     template <typename T>
     CasOC::Variables<T> scaleVariables(CasOC::Variables<T> vars) const {
-        const VariablesDM& b = m_scalingShifter;
-        const VariablesDM& m = m_scalingMultiplier;
         for (const auto& key : getSortedVarKeys(vars)) {
             vars.at(key) = scaleVar(key, vars.at(key));
         }
@@ -242,8 +279,6 @@ private:
     // Transform the variables back to their original values.
     template <typename T>
     CasOC::Variables<T> unScaleVariables(CasOC::Variables<T> vars) const {
-        const VariablesDM& b = m_scalingShifter;
-        const VariablesDM& m = m_scalingMultiplier;
         for (const auto& key : getSortedVarKeys(vars)) {
             vars.at(key) = unScaleVar(key, vars.at(key));
         }
@@ -252,10 +287,8 @@ private:
 
     CasOC::VariablesDM unScaleVariables(const CasOC::VariablesDM& vars) const {
         CasOC::VariablesDM out;
-        const VariablesDM& b = m_scalingShifter;
-        const VariablesDM& m = m_scalingMultiplier;
         for (const auto& key : getSortedVarKeys(vars)) {
-            out.at(key) = unScaleVar(key, vars.at(key));
+            out[key] = unScaleVar(key, vars.at(key));
         }
         return out;
     }

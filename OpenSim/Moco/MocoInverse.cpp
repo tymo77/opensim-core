@@ -75,14 +75,14 @@ std::pair<MocoStudy, TimeSeriesTable> MocoInverse::initializeInternal() const {
     auto& problem = study.updProblem();
     problem.setModelAsCopy(model);
 
-    TimeInfo timeInfo;
+    MocoTimeInfo timeInfo;
     updateTimeInfo("kinematics", kinematics.getIndependentColumn().front(),
             kinematics.getIndependentColumn().back(), timeInfo);
     if (get_clip_time_range()) {
         timeInfo.initial += 1e-3;
         timeInfo.final -= 1e-3;
     }
-    problem.setTimeBounds(timeInfo.initial, timeInfo.final);
+    problem.setTimeInfo(timeInfo.initial, timeInfo.final);
 
     // TODO: Allow users to specify costs flexibly.
     auto* effort = problem.addGoal<MocoControlGoal>("excitation_effort");

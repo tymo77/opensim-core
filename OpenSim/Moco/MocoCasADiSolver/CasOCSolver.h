@@ -77,8 +77,14 @@ public:
     double getImplicitMultibodyAccelerationsWeight() const {
         return m_implicitMultibodyAccelerationsWeight;
     }
+    double getImplicitMultibodyAccelerationsScaler() const {
+        return m_implicitMultibodyAccelerationsScaler;
+    }
     void setImplicitMultibodyAccelerationsWeight(double weight) {
         m_implicitMultibodyAccelerationsWeight = weight;
+    }
+    void setImplicitMultibodyAccelerationsScaler(double scaler) {
+        m_implicitMultibodyAccelerationsScaler = scaler;
     }
     void setImplicitAuxiliaryDerivativeBounds(Bounds bounds) {
         m_implicitAuxiliaryDerivativeBounds = bounds;
@@ -95,8 +101,14 @@ public:
     double getImplicitAuxiliaryDerivativesWeight() const {
         return m_implicitAuxiliaryDerivativesWeight;
     }
+    double getImplicitAuxiliaryDerivativesScaler() const {
+        return m_implicitAuxiliaryDerivativesScaler;
+    }
     void setImplicitAuxiliaryDerivativesWeight(double weight) {
         m_implicitAuxiliaryDerivativesWeight = weight;
+    }
+    void setImplicitAuxiliaryDerivativesScaler(double scaler) {
+        m_implicitAuxiliaryDerivativesScaler = scaler;
     }
 
     /// Whether or not to constrain control values at mesh interval midpoints
@@ -181,8 +193,10 @@ private:
     double m_lagrangeMultiplierWeight = 1.0;
     bool m_minimizeImplicitMultibodyAccelerations = false;
     double m_implicitMultibodyAccelerationsWeight = 1.0;
+    double m_implicitMultibodyAccelerationsScaler = 1.0;
     bool m_minimizeImplicitAuxiliaryDerivatives = false;
     double m_implicitAuxiliaryDerivativesWeight = 1.0;
+    double m_implicitAuxiliaryDerivativesScaler = 1.0;
     bool m_interpolateControlMidpoints = true;
     Bounds m_implicitMultibodyAccelerationBounds;
     Bounds m_implicitAuxiliaryDerivativeBounds;
