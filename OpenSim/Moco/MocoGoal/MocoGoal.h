@@ -356,7 +356,6 @@ protected:
 
     double calcSystemDisplacement(
             const SimTK::State& initial, const SimTK::State& final) const;
-
 private:
     OpenSim_DECLARE_PROPERTY(
             enabled, bool, "This bool indicates whether this goal is enabled.");

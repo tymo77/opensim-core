@@ -30,6 +30,7 @@ void MocoControlGoal::constructProperties() {
     constructProperty_control_weights_pattern(MocoWeightSet());
     constructProperty_exponent(2);
     constructProperty_divide_by_displacement(false);
+    constructProperty_divide_by_duration(false);
 }
 
 void MocoControlGoal::setWeightForControl(
@@ -135,6 +136,10 @@ void MocoControlGoal::calcGoalImpl(
     if (get_divide_by_displacement()) {
         cost[0] /=
                 calcSystemDisplacement(input.initial_state, input.final_state);
+    }
+
+    if (get_divide_by_duration()) {
+        cost[0] /= (input.final_time - input.initial_time);
     }
 }
 

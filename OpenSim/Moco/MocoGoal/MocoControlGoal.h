@@ -93,6 +93,12 @@ public:
         return get_divide_by_displacement();
     }
 
+    /** Set if the goal should be divided by the duration the phase. */
+    void setDivideByDuration(bool tf) { set_divide_by_duration(tf); }
+    bool getDivideByDuration() const {
+        return get_divide_by_duration();
+    }
+
 protected:
     void initializeOnModelImpl(const Model&) const override;
     void calcIntegrandImpl(
@@ -115,6 +121,8 @@ private:
     OpenSim_DECLARE_PROPERTY(divide_by_displacement, bool,
             "Divide by the model's displacement over the phase (default: "
             "false)");
+    OpenSim_DECLARE_PROPERTY(divide_by_duration, bool,
+            "Divide by the total time of the phase.");
     mutable std::vector<double> m_weights;
     mutable std::vector<int> m_controlIndices;
     mutable std::vector<std::string> m_controlNames;
