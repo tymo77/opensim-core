@@ -110,7 +110,7 @@ int main() {
     // Bounds.
     // -------
     double finalTime = 1.0;
-    problem.setTimeInfo(0, finalTime);
+    problem.setTimeBounds(0, finalTime);
     problem.setStateInfo("/jointset/j0/q0/value", {-10, 10});
     problem.setStateInfo("/jointset/j0/q0/speed", {-50, 50});
     problem.setStateInfo("/jointset/j1/q1/value", {-10, 10});
