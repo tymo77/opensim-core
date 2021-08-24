@@ -31,6 +31,7 @@
 #include "PointToPointActuator.h"
 #include "SpringGeneralizedForce.h"
 #include "ClutchedPathSpring.h"
+#include "DCMotor.h"
 
 #include "Schutte1993Muscle_Deprecated.h"
 #include "Delp1990Muscle_Deprecated.h"
