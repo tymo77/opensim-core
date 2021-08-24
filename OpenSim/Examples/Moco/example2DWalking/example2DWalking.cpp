@@ -51,6 +51,8 @@ std::string SCALING_METHOD = "info";
 
 using namespace OpenSim;
 
+bool USE_CUSTOM_OPTIONS = false;
+
 /// Set a coordinate tracking problem where the goal is to minimize the
 /// difference between provided and simulated coordinate values and speeds
 /// (and ground reaction forces) as well as to minimize an effort cost (squared
@@ -209,6 +211,11 @@ MocoSolution gaitTracking(double controlEffortWeight = 10,
     solver.set_parallel(1);
     solver.set_scaling_method(SCALING_METHOD);
 
+    if (USE_CUSTOM_OPTIONS) {
+        // This is a file which contains more custom solver options for ipopt.
+        solver.set_optim_ipopt_opt_filename("track_opt.opt");
+    }
+
     // Solve problem.
     // ==============
     MocoSolution solution = study.solve();
@@ -344,6 +351,11 @@ void gaitPrediction(const MocoSolution& gaitTrackingSolution) {
     // Use the solution from the tracking simulation as initial guess.
     solver.setGuess(gaitTrackingSolution);
     solver.set_scaling_method(SCALING_METHOD);
+
+    if (USE_CUSTOM_OPTIONS) {
+        // This is a file which contains more custom solver options for ipopt.
+        solver.set_optim_ipopt_opt_filename("predi_opt.opt");
+    }
 
     // Solve problem.
     // ==============
