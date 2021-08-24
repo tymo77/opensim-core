@@ -73,7 +73,7 @@ problem.setModel(Model('model_file.osim'));
 \textbf{Set variable bounds.}\\
 Set initial time to 0; final time between 0.5 and 1.5 s.
 \begin{lstlisting}[style=Matlab-editor, basicstyle=\mlttfamily\small, linewidth=0.48\textwidth]
-problem.setTimeBounds(MocoInitialBounds(0), MocoFinalBounds(0.5, 1.5));
+problem.setTimeInfo(MocoInitialBounds(0), MocoFinalBounds(0.5, 1.5));
 \end{lstlisting}
 The coordinate value must be between 0 and $\pi$ over the phase, 
 and its initial value is 0 and its final value is $\pi/2$.
@@ -299,7 +299,7 @@ solution.unseal(); % Access a failed solution.
          & {x_{0,L} \leq x_0 \leq x_{0,U} \quad\quad x_{f,L} \leq x_f \leq x_{f,U}} && \texttt{{problem.setControlInfo()}} \\
          \mbox{with respect to} \quad
          & {y \in [y_{L}, y_{U}] \quad\quad\quad x \in [x_{L}, x_{U}]} \\
-         & \textcolor{dblue}{t_0 \in [t_{0,L}, t_{0,U}] \quad\quad  t_f \in [t_{f,L}, t_{f,U}]} && \texttt{\textcolor{dblue}{problem.setTimeBounds()}} \\
+         & \textcolor{dblue}{t_0 \in [t_{0,L}, t_{0,U}] \quad\quad  t_f \in [t_{f,L}, t_{f,U}]} && \texttt{\textcolor{dblue}{problem.setTimeInfo()}} \\
          & {p \in [p_{L}, p_{U}]} && \texttt{{problem.addParameter()}} \\
     \end{align*}
 \vspace{-40pt}

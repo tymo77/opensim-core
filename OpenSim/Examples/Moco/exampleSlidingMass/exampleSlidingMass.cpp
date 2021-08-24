@@ -82,7 +82,7 @@ int main() {
     // Bounds.
     // -------
     // Initial time must be 0, final time can be within [0, 5].
-    problem.setTimeBounds(MocoInitialBounds(0), MocoFinalBounds(0, 5));
+    problem.setTimeInfo(MocoInitialBounds(0), MocoFinalBounds(0, 5));
 
     // Position must be within [-5, 5] throughout the motion.
     // Initial position must be 0, final position must be 1.

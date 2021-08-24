@@ -164,7 +164,7 @@ int main() {
             auto model = OpenSim::make_unique<Model>();
             model->addComponent(new MyImplicitAuxiliaryDynamics("implicit"));
             problem.setModel(std::move(model));
-            problem.setTimeBounds(0, 1.0);
+            problem.setTimeInfo(0, 1.0);
             problem.setStateInfo("/implicit_auxdyn/foo", {0, 3}, 1.0);
             MocoSolution solution = study.solve();
             const int N = solution.getNumTimes();

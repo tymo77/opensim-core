@@ -110,7 +110,7 @@ int main() {
     // Bounds.
     // -------
     double finalTime = 1.0;
-    problem.setTimeBounds(0, finalTime);
+    problem.setTimeInfo(0, finalTime);
 
     // Cost.
     // -----

@@ -94,7 +94,7 @@ int main() {
     // Bounds.
     // -------
     // Initial time must be 0, final time can be within [0, 5].
-    problem.setTimeBounds(MocoInitialBounds(0), MocoFinalBounds(0, 5));
+    problem.setTimeInfo(MocoInitialBounds(0), MocoFinalBounds(0, 5));
 
     // Initial position must be 0, final position must be 1.
     problem.setStateInfo("/slider/position/value", MocoBounds(-5, 5),
