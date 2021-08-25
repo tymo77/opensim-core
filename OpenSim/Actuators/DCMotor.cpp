@@ -308,7 +308,7 @@ void DCMotor::extendAddToSystem(SimTK::MultibodySystem& system) const
 	// Add state variables
 	addStateVariable("current", SimTK::Stage::Dynamics);
 
-	addCacheVariable("current_deriv", 0.0, SimTK::Stage::Dynamics);
+	addCacheVariable("current_deriv_dt", 0.0, SimTK::Stage::Dynamics);
 }
 
 void DCMotor::extendInitStateFromProperties(SimTK::State& s) const
