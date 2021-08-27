@@ -44,6 +44,8 @@
 
 #include <OpenSim/Common/STOFileAdapter.h>
 #include <OpenSim/Moco/osimMoco.h>
+#include <OpenSim/Common/TableUtilities.h>
+#include <OpenSim/Actuators/DCMotor.h>
 
 using namespace OpenSim;
 
@@ -54,8 +56,9 @@ using namespace OpenSim;
 // and used as an initial guess for the prediction.
 MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
         std::string track_file, double speed, double motor_weight, double track_weight,
-        double speed_bound, double torque_bound,
-        std::string scaling_method, int Nmesh, int Nparallel, std::string fn_prefix, int eff_exp) {
+        double speed_bound, double motor_bound,
+        std::string scaling_method, int Nmesh, int Nparallel,
+        std::string fn_prefix, int eff_exp, int NmaxIts, std::string motor_mode) {
 
     using SimTK::Pi;
 
@@ -64,16 +67,17 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
 
     // Define the optimal control problem.
     // ===================================
+    Model model_in(model_file);
     MocoProblem& problem = study.updProblem();
-    ModelProcessor modelprocessor = ModelProcessor(model_file);
+    ModelProcessor modelprocessor = ModelProcessor(model_in);
     problem.setModelProcessor(modelprocessor);
-     Model model = modelprocessor.process();
-     model.initSystem();
+    Model model = modelprocessor.process();
+    model.initSystem();
 
     // Goals.
     // =====
     // Symmetry.
-    auto* symmetryGoal = problem.addGoal<MocoPeriodicityGoal>("symmetryGoal");
+    auto* symmetryGoal = problem.addGoal<MocoPeriodicityGoal>("symmetry_constraint");
     
     // Symmetric coordinate values (except for pelvis_tx) and speeds.
     for (const auto& coord : model.getComponentList<Coordinate>()) {
@@ -108,10 +112,24 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
         }
     }
     symmetryGoal->addStatePair({"/jointset/groundPelvis/pelvis_tx/speed"});
+    
+    // Symmetric motor current if DC motor.
+    for (const auto& motor : model.getComponentList<DCMotor>()) {
+        std::string s_name = motor.getAbsolutePathString() + "/current";
+        if (IO::EndsWith(s_name, "_r")) {
+            symmetryGoal->addStatePair({s_name,
+                    std::regex_replace(s_name, std::regex("_r"), "_l")});
+        } else if (IO::EndsWith(s_name, "_l")) {
+            symmetryGoal->addStatePair({s_name,
+                    std::regex_replace(s_name, std::regex("_l"), "_r")});
+        }
+    }
+
     // Symmetric coordinate actuator controls.
     symmetryGoal->addControlPair({"/lumbarAct"});
     symmetryGoal->addControlPair({"/motor_r", "/motor_l"});
     symmetryGoal->addControlPair({"/motor_l", "/motor_r"});
+
     // Symmetric muscle activations.
     for (const auto& muscle : model.getComponentList<Muscle>()) {
         if (IO::EndsWith(muscle.getName(), "_r")) {
@@ -129,13 +147,29 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     auto* speedGoal = problem.addGoal<MocoAverageSpeedGoal>("speed");
     speedGoal->set_desired_average_speed(speed);
 
-    // Effort over time.
-    auto* motorEffortGoal = problem.addGoal<MocoControlGoal>("effort_motor", 10);
-    motorEffortGoal->setExponent(eff_exp);
-    motorEffortGoal->setDivideByDuration(true);
-    motorEffortGoal->setWeightForControlPattern(".*", 0); // Set everything to 0 first.
-    motorEffortGoal->setWeightForControl("/motor_r", motor_weight);
-    motorEffortGoal->setWeightForControl("/motor_l", motor_weight);
+    // Motor effort over time.
+    if (motor_mode == "exponent") {
+
+        auto* motorEffortGoal =
+                problem.addGoal<MocoControlGoal>("effort_motor", 10);
+        motorEffortGoal->setExponent(eff_exp);
+        motorEffortGoal->setDivideByDuration(true);
+        motorEffortGoal->setWeightForControlPattern(
+                ".*", 0); // Set everything to 0 first.
+        motorEffortGoal->setWeightForControl("/motor_r", motor_weight);
+        motorEffortGoal->setWeightForControl("/motor_l", motor_weight);
+    } else if (motor_mode == "energy") {
+
+        auto* motorEnergyGoal =
+                problem.addGoal<MocoEnergyGoal>("energy_motor", motor_weight);
+        motorEnergyGoal->setDivideByDuration(true);
+        motorEnergyGoal->addPair({"/motor_r", "/motor_r/current"});
+        motorEnergyGoal->addPair({"/motor_l", "/motor_l/current"});
+        motorEnergyGoal->setSmoothScale(100.0);
+    } else {
+        OPENSIM_THROW(InvalidArgument,
+                "Invalid motor mode: '"+ motor_mode + "'. Must be 'exponent' or 'energy.'");
+    }
 
     // Effort over time.
     auto* muscleEffortGoal = problem.addGoal<MocoControlGoal>("effort_muscle", 10);
@@ -149,7 +183,10 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
         auto* stateTracking = problem.addGoal<MocoStateTrackingGoal>(
                 "tracking", track_weight);
         stateTracking->setAllowUnusedReferences(true);
-        stateTracking->setReference(TableProcessor(track_file));
+        auto ref_table_proc = TableProcessor(track_file) | TabOpLowPassFilter(20);
+        auto ref_table = ref_table_proc.process(&model);
+        stateTracking->setReference(ref_table);
+        STOFileAdapter::write(ref_table, "track_ref.sto");
         auto track_traj = MocoTrajectory(track_file);
         problem.setTimeInfo(
                 track_traj.getInitialTime(), track_traj.getFinalTime());
@@ -199,11 +236,18 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     problem.setStateInfo("/jointset/groundPelvis/pelvis_ty/speed", {-5, 5});
 
 
+    // If the model uses DCMotor actuators, set their current limits.
+    for (const auto& motor : model.getComponentList<DCMotor>()) {
+        double max_current = motor.getMaximumCurrent();
+        problem.setStateInfo(motor.getAbsolutePathString()  + "/current",
+                {-max_current, max_current});
+    }
+
     problem.setMultiplierBounds({-3000, 3000});
     problem.setControlInfo(
-            "/motor_r", {-torque_bound, torque_bound}, {}, {}, 1);
+            "/motor_r", {-motor_bound, motor_bound}, {}, {}, 1);
     problem.setControlInfo(
-            "/motor_l", {-torque_bound, torque_bound}, {}, {}, 1);
+            "/motor_l", {-motor_bound, motor_bound}, {}, {}, 1);
     problem.setControlInfo("/lumbarAct", {-0.5, 0.5}, {}, {}, 1);
     
     //problem.setMultiplierScaler(1);
@@ -217,10 +261,10 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     solver.set_optim_solver("ipopt");
     solver.set_optim_convergence_tolerance(1e-4);
     solver.set_optim_constraint_tolerance(1e-4);
-    solver.set_optim_max_iterations(2000);
+    solver.set_optim_max_iterations(NmaxIts);
     solver.set_enforce_constraint_derivatives(true);
     solver.set_minimize_lagrange_multipliers(false);
-    solver.set_velocity_correction_bounds({-100, 100});
+    solver.set_velocity_correction_bounds({-1, 1});
     // Use the solution from the tracking simulation as initial guess.
     solver.setGuess(guess);
     solver.set_scaling_method(scaling_method);
@@ -257,11 +301,17 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
 
 int main(int argc, char* argv[]) {
     try {
-        std::string model_file, guess_file, track_file, scaling_method;
-        double motor_weight, track_weight, speed_bound, torque_bound, speed;
-        int Nmesh, Nparallel, eff_exp;
+        std::string model_file, guess_file, track_file, scaling_method, motor_mode;
+        double motor_weight, track_weight, speed_bound, motor_bound, speed;
+        int Nmesh, Nparallel, eff_exp, NmaxIts;
 
-        if (argc == 13) {
+        // Log the version for reference.
+        std::cout << "2D Gait Generation -- Tyler Morrison 2021"
+                  << std::endl;
+        std::cout << "Version compiled " << __DATE__ << " at " __TIME__ << "."
+                  << std::endl;
+
+        if (argc == 15) {
             std::cout << "Run in two-step track + predict mode..." << std::endl;
             model_file       = argv[1];
             guess_file       = argv[2];
@@ -269,13 +319,15 @@ int main(int argc, char* argv[]) {
             motor_weight     = atof(argv[4]);
             track_weight     = atof(argv[5]);
             speed_bound      = atof(argv[6]);
-            torque_bound     = atof(argv[7]);
+            motor_bound     = atof(argv[7]);
             scaling_method   = argv[8];
             Nmesh            = atoi(argv[9]);
             Nparallel        = atoi(argv[10]);
             speed            = atof(argv[11]);
             eff_exp          = atoi(argv[12]);
-        } else if (argc == 11) {
+            NmaxIts          = atoi(argv[13]);
+            motor_mode       = argv[14];
+        } else if (argc == 13) {
             std::cout << "Run in one-step predict mode..." << std::endl;
             model_file       = argv[1];
             guess_file       = argv[2];
@@ -283,12 +335,14 @@ int main(int argc, char* argv[]) {
             motor_weight     = atof(argv[3]);
             track_weight     = 0.0;
             speed_bound      = atof(argv[4]);
-            torque_bound     = atof(argv[5]);
+            motor_bound     = atof(argv[5]);
             scaling_method   = argv[6];
             Nmesh            = atoi(argv[7]);
             Nparallel        = atoi(argv[8]);
             speed            = atof(argv[9]);
             eff_exp          = atoi(argv[10]);
+            NmaxIts          = atoi(argv[11]);
+            motor_mode       = argv[12];
         } else {
             std::cerr << "Input parse failure." << std::endl;
             return EXIT_FAILURE;
@@ -301,25 +355,29 @@ int main(int argc, char* argv[]) {
         std::cout << "4: Motor Weight: " << motor_weight << std::endl;
         std::cout << "5: Track Weight: " << track_weight << std::endl;
         std::cout << "6: Ankle speed bound: " << speed_bound << std::endl;
-        std::cout << "7: Motor torque bound: " << torque_bound << std::endl;
+        std::cout << "7: Motor control bound: " << motor_bound << std::endl;
         std::cout << "8: Scaling methods: " << scaling_method << std::endl;
         std::cout << "9: Nmesh: " << Nmesh << std::endl;
         std::cout << "10: Nparallel: " << Nparallel << std::endl;
         std::cout << "11: Walking Speed: " << speed << std::endl;
         std::cout << "12: Effort Exponent: " << eff_exp << std::endl;
+        std::cout << "13: Max Iterations: " << NmaxIts << std::endl;
+        std::cout << "14: Motor Cost Mode: " << motor_mode << std::endl;
         std::cout << "***************************************" << std::endl;
 
         // Solve the initial tracking problem.
+        MocoTrajectory guess_traj(guess_file);
+
         auto track_sol = gaitPrediction(
-            model_file, MocoTrajectory(guess_file), track_file,
-            speed, motor_weight, track_weight, speed_bound, torque_bound, scaling_method, Nmesh, Nparallel, "track",
-                eff_exp);
+            model_file, guess_traj, track_file,
+            speed, motor_weight, track_weight, speed_bound, motor_bound, scaling_method, Nmesh, Nparallel, "track",
+                eff_exp, NmaxIts, motor_mode);
 
         // Solve the pure prediction problem.
         // Ignores the track file and the track weight.
         gaitPrediction(model_file, track_sol, "",
-            speed, motor_weight, 0, speed_bound, torque_bound, scaling_method, Nmesh, Nparallel,
-                "predict", eff_exp);
+            speed, motor_weight, 0, speed_bound, motor_bound, scaling_method, Nmesh, Nparallel,
+                "predict", eff_exp, NmaxIts, motor_mode);
 
     } catch (const std::exception& e) { std::cout << e.what() << std::endl; }
     return EXIT_SUCCESS;
