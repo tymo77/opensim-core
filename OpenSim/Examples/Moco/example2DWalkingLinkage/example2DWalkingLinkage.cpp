@@ -116,10 +116,10 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     // Symmetric motor current if DC motor.
     for (const auto& motor : model.getComponentList<DCMotor>()) {
         std::string s_name = motor.getAbsolutePathString() + "/current";
-        if (IO::EndsWith(s_name, "_r")) {
+        if (IO::EndsWith(motor.getName(), "_r")) {
             symmetryGoal->addStatePair({s_name,
                     std::regex_replace(s_name, std::regex("_r"), "_l")});
-        } else if (IO::EndsWith(s_name, "_l")) {
+        } else if (IO::EndsWith(motor.getName(), "_l")) {
             symmetryGoal->addStatePair({s_name,
                     std::regex_replace(s_name, std::regex("_l"), "_r")});
         }
@@ -265,6 +265,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     solver.set_enforce_constraint_derivatives(true);
     solver.set_minimize_lagrange_multipliers(false);
     solver.set_velocity_correction_bounds({-1, 1});
+    solver.set_optim_ipopt_opt_filename(fn_prefix + ".opt");
     // Use the solution from the tracking simulation as initial guess.
     solver.setGuess(guess);
     solver.set_scaling_method(scaling_method);
