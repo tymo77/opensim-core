@@ -58,7 +58,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
         std::string track_file, double speed, double motor_weight, double track_weight,
         double speed_bound, double motor_bound,
         std::string scaling_method, int Nmesh, int Nparallel,
-        std::string fn_prefix, int eff_exp, int NmaxIts, std::string motor_mode) {
+        std::string fn_prefix, int eff_exp, int NmaxIts, std::string motor_mode, double smooth) {
 
     using SimTK::Pi;
 
@@ -165,7 +165,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
         motorEnergyGoal->setDivideByDuration(true);
         motorEnergyGoal->addPair({"/motor_r", "/motor_r/current"});
         motorEnergyGoal->addPair({"/motor_l", "/motor_l/current"});
-        motorEnergyGoal->setSmoothScale(100.0);
+        motorEnergyGoal->setSmoothScale(smooth);
     } else {
         OPENSIM_THROW(InvalidArgument,
                 "Invalid motor mode: '"+ motor_mode + "'. Must be 'exponent' or 'energy.'");
@@ -303,7 +303,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
 int main(int argc, char* argv[]) {
     try {
         std::string model_file, guess_file, track_file, scaling_method, motor_mode;
-        double motor_weight, track_weight, speed_bound, motor_bound, speed;
+        double motor_weight, track_weight, speed_bound, motor_bound, speed, smooth;
         int Nmesh, Nparallel, eff_exp, NmaxIts;
 
         // Log the version for reference.
@@ -312,7 +312,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Version compiled " << __DATE__ << " at " __TIME__ << "."
                   << std::endl;
 
-        if (argc == 15) {
+        if (argc == 16) {
             std::cout << "Run in two-step track + predict mode..." << std::endl;
             model_file       = argv[1];
             guess_file       = argv[2];
@@ -328,7 +328,8 @@ int main(int argc, char* argv[]) {
             eff_exp          = atoi(argv[12]);
             NmaxIts          = atoi(argv[13]);
             motor_mode       = argv[14];
-        } else if (argc == 13) {
+            smooth           = atof(argv[15]);
+        } else if (argc == 14) {
             std::cout << "Run in one-step predict mode..." << std::endl;
             model_file       = argv[1];
             guess_file       = argv[2];
@@ -344,6 +345,7 @@ int main(int argc, char* argv[]) {
             eff_exp          = atoi(argv[10]);
             NmaxIts          = atoi(argv[11]);
             motor_mode       = argv[12];
+            smooth           = atof(argv[13]);
         } else {
             std::cerr << "Input parse failure." << std::endl;
             return EXIT_FAILURE;
@@ -364,6 +366,7 @@ int main(int argc, char* argv[]) {
         std::cout << "12: Effort Exponent: " << eff_exp << std::endl;
         std::cout << "13: Max Iterations: " << NmaxIts << std::endl;
         std::cout << "14: Motor Cost Mode: " << motor_mode << std::endl;
+        std::cout << "15: Energy smoothing constant: " << smooth << std::endl;
         std::cout << "***************************************" << std::endl;
 
         // Solve the initial tracking problem.
@@ -372,13 +375,13 @@ int main(int argc, char* argv[]) {
         auto track_sol = gaitPrediction(
             model_file, guess_traj, track_file,
             speed, motor_weight, track_weight, speed_bound, motor_bound, scaling_method, Nmesh, Nparallel, "track",
-                eff_exp, NmaxIts, motor_mode);
+                eff_exp, NmaxIts, motor_mode, smooth);
 
         // Solve the pure prediction problem.
         // Ignores the track file and the track weight.
         gaitPrediction(model_file, track_sol, "",
             speed, motor_weight, 0, speed_bound, motor_bound, scaling_method, Nmesh, Nparallel,
-                "predict", eff_exp, NmaxIts, motor_mode);
+                "predict", eff_exp, NmaxIts, motor_mode, smooth);
 
     } catch (const std::exception& e) { std::cout << e.what() << std::endl; }
     return EXIT_SUCCESS;
