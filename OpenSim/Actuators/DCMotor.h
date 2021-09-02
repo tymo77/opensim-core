@@ -69,7 +69,10 @@ namespace OpenSim {
 		/* The default direction for the axis is z (0,0,1). */
 		OpenSim_DECLARE_PROPERTY(shaft_axis, SimTK::Vec3,
 			"Fixed direction about which torque is applied, in Ground or Rotor "
-			"frame depending on 'torque_is_global' property.");
+                "frame depending on 'torque_is_global' property.");
+        /* The default is force_current_limit=false. */
+        OpenSim_DECLARE_PROPERTY(enforce_current_limit, bool,
+                "Enforce current limit in dynamic equations (bad for direct collocation).");
 
 		OpenSim_DECLARE_PROPERTY(optimal_force, double,
 			"The maximum torque produced by this actuator when fully activated.");

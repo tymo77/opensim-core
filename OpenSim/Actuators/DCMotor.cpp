@@ -93,6 +93,7 @@ void DCMotor::constructProperties()
 	constructProperty_b(0.0);
 	constructProperty_maximum_current(10.0);
 	constructProperty_initial_current(0.0);
+    constructProperty_enforce_current_limit(false);
 }
 
 
@@ -383,7 +384,11 @@ void DCMotor::computeStateVariableDerivatives(const SimTK::State& s) const
 	i_dot = (getControl(s)* getVoltageRatio() - getK() * speed - getR()*i) / (getL());
 
 	// check if the current is over the limit of the supplied source
-	if ((i >= get_maximum_current() && i_dot > 0) || (i<= -get_maximum_current() && i_dot < 0)) i_dot = 0;
+    if (get_enforce_current_limit()) {
+        if ((i >= get_maximum_current() && i_dot > 0) ||
+                (i <= -get_maximum_current() && i_dot < 0))
+            i_dot = 0;
+    }
 
 	derivs[0] = i_dot;
 

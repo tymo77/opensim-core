@@ -46,6 +46,7 @@
 #include <OpenSim/Moco/osimMoco.h>
 #include <OpenSim/Common/TableUtilities.h>
 #include <OpenSim/Actuators/DCMotor.h>
+#include <OpenSim/Actuators/TorqueActuator.h>
 
 using namespace OpenSim;
 
@@ -73,6 +74,19 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     problem.setModelProcessor(modelprocessor);
     Model model = modelprocessor.process();
     model.initSystem();
+
+    // Detect motors: Torque Actuator, DCMotor, or neither.
+    bool has_dcmotor = false;
+    for (const auto& motor : model.getComponentList<DCMotor>()) {
+        std::cout << "Found DCMotor: " << motor.getName() << std::endl;
+        has_dcmotor = true;
+    }
+
+    bool has_idealtorque = false;
+    for (const auto& motor : model.getComponentList<TorqueActuator>()) {
+        std::cout << "Found Torque Actuator: " << motor.getName() << std::endl;
+        has_idealtorque = true;
+    }
 
     // Goals.
     // =====
@@ -127,8 +141,11 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
 
     // Symmetric coordinate actuator controls.
     symmetryGoal->addControlPair({"/lumbarAct"});
-    symmetryGoal->addControlPair({"/motor_r", "/motor_l"});
-    symmetryGoal->addControlPair({"/motor_l", "/motor_r"});
+
+    if (has_dcmotor || has_idealtorque) {
+        symmetryGoal->addControlPair({"/motor_r", "/motor_l"});
+        symmetryGoal->addControlPair({"/motor_l", "/motor_r"});
+    }
 
     // Symmetric muscle activations.
     for (const auto& muscle : model.getComponentList<Muscle>()) {
@@ -148,35 +165,41 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     speedGoal->set_desired_average_speed(speed);
 
     // Motor effort over time.
-    if (motor_mode == "exponent") {
+    if (has_dcmotor || has_idealtorque) {
+        if (motor_mode == "exponent") {
 
-        auto* motorEffortGoal =
-                problem.addGoal<MocoControlGoal>("effort_motor", 10);
-        motorEffortGoal->setExponent(eff_exp);
-        motorEffortGoal->setDivideByDuration(true);
-        motorEffortGoal->setWeightForControlPattern(
-                ".*", 0); // Set everything to 0 first.
-        motorEffortGoal->setWeightForControl("/motor_r", motor_weight);
-        motorEffortGoal->setWeightForControl("/motor_l", motor_weight);
-    } else if (motor_mode == "energy") {
+            auto* motorEffortGoal =
+                    problem.addGoal<MocoControlGoal>("effort_motor", 10);
+            motorEffortGoal->setExponent(eff_exp);
+            motorEffortGoal->setDivideByDuration(true);
+            motorEffortGoal->setWeightForControlPattern(
+                    ".*", 0); // Set everything to 0 first.
+            motorEffortGoal->setWeightForControl("/motor_r", motor_weight);
+            motorEffortGoal->setWeightForControl("/motor_l", motor_weight);
+        } else if (motor_mode == "energy") {
 
-        auto* motorEnergyGoal =
-                problem.addGoal<MocoEnergyGoal>("energy_motor", motor_weight);
-        motorEnergyGoal->setDivideByDuration(true);
-        motorEnergyGoal->addPair({"/motor_r", "/motor_r/current"});
-        motorEnergyGoal->addPair({"/motor_l", "/motor_l/current"});
-        motorEnergyGoal->setSmoothScale(smooth);
-    } else {
-        OPENSIM_THROW(InvalidArgument,
-                "Invalid motor mode: '"+ motor_mode + "'. Must be 'exponent' or 'energy.'");
+            auto* motorEnergyGoal = problem.addGoal<MocoEnergyGoal>(
+                    "energy_motor", motor_weight);
+            motorEnergyGoal->setDivideByDuration(true);
+            motorEnergyGoal->addPair({"/motor_r", "/motor_r/current"});
+            motorEnergyGoal->addPair({"/motor_l", "/motor_l/current"});
+            motorEnergyGoal->setSmoothScale(smooth);
+        } else {
+            OPENSIM_THROW(InvalidArgument,
+                    "Invalid motor mode: '" + motor_mode +
+                            "'. Must be 'exponent' or 'energy.'");
+        }
     }
 
     // Effort over time.
     auto* muscleEffortGoal = problem.addGoal<MocoControlGoal>("effort_muscle", 10);
     muscleEffortGoal->setExponent(eff_exp);
     muscleEffortGoal->setDivideByDuration(true);
-    muscleEffortGoal->setWeightForControl("/motor_r", 0);
-    muscleEffortGoal->setWeightForControl("/motor_l", 0);
+
+    if (has_dcmotor || has_idealtorque) {
+        muscleEffortGoal->setWeightForControl("/motor_r", 0);
+        muscleEffortGoal->setWeightForControl("/motor_l", 0);
+    }
 
     // State Tracking (optional)
     if (track_file.length() > 0) {
@@ -224,14 +247,18 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     problem.setStateInfo(
             "/jointset/ankle_l/ankle_angle_l/speed", {-s_ankle, s_ankle});
 
-    problem.setStateInfo("/j_in_r/motor_angle_r/speed", {-s_mech, s_mech});
-    problem.setStateInfo("/j_in_l/motor_angle_l/speed", {-s_mech, s_mech});
-
-    problem.setStateInfo(
-            "/j_passive1_r/passive_angle1_r/speed", {-s_mech, s_mech});
-    problem.setStateInfo(
-            "/j_passive1_l/passive_angle1_l/speed", {-s_mech, s_mech});
-
+    
+    if (auto body = model.findComponent<Coordinate>("motor_angle")) {
+        problem.setStateInfo("/j_in_r/motor_angle_r/speed", {-s_mech, s_mech});
+        problem.setStateInfo("/j_in_l/motor_angle_l/speed", {-s_mech, s_mech});
+    }
+    
+    if (auto body = model.findComponent<Coordinate>("passive_angle1")) {
+        problem.setStateInfo(
+                "/j_passive1_r/passive_angle1_r/speed", {-s_mech, s_mech});
+        problem.setStateInfo(
+                "/j_passive1_l/passive_angle1_l/speed", {-s_mech, s_mech});
+    }
     problem.setStateInfo("/jointset/groundPelvis/pelvis_tx/speed", {-5, 5});
     problem.setStateInfo("/jointset/groundPelvis/pelvis_ty/speed", {-5, 5});
 
@@ -241,13 +268,19 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
         double max_current = motor.getMaximumCurrent();
         problem.setStateInfo(motor.getAbsolutePathString()  + "/current",
                 {-max_current, max_current});
+        
+        //Do not enforce current limits in dynamic equations.
+        motor.get_enforce_current_limit(false);
     }
 
     problem.setMultiplierBounds({-3000, 3000});
-    problem.setControlInfo(
-            "/motor_r", {-motor_bound, motor_bound}, {}, {}, 1);
-    problem.setControlInfo(
-            "/motor_l", {-motor_bound, motor_bound}, {}, {}, 1);
+
+    if (has_dcmotor || has_idealtorque) {
+        problem.setControlInfo(
+                "/motor_r", {-motor_bound, motor_bound}, {}, {}, 1);
+        problem.setControlInfo(
+                "/motor_l", {-motor_bound, motor_bound}, {}, {}, 1);
+    }
     problem.setControlInfo("/lumbarAct", {-0.5, 0.5}, {}, {}, 1);
     
     //problem.setMultiplierScaler(1);
