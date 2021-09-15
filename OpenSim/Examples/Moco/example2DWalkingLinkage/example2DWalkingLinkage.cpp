@@ -160,7 +160,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
                             std::regex("_l"), "_r")});
         }
     }
-    // Prescribed average gait speed.
+    //// Prescribed average gait speed.
     auto* speedGoal = problem.addGoal<MocoAverageSpeedGoal>("speed");
     speedGoal->set_desired_average_speed(speed);
 
@@ -215,6 +215,8 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
                 track_traj.getInitialTime(), track_traj.getFinalTime());
     } else {
         problem.setTimeInfo(0.0, {0.2, 0.7});
+        //problem.setTimeInfo(0.0, 0.457201469);
+        //problem.setTimeInfo(0.0, 0.4);
     }
 
     // Bounds.
@@ -379,6 +381,22 @@ int main(int argc, char* argv[]) {
             NmaxIts          = atoi(argv[11]);
             motor_mode       = argv[12];
             smooth           = atof(argv[13]);
+        } else if (argc == 3){
+            std::cout << "Playback mode..." << std::endl;
+            model_file = argv[1];
+            std::string trajectory_file = argv[2];
+
+            MocoTrajectory traj(trajectory_file);
+            MocoStudy study;
+            study.setName("visualizer");
+            Model model_in(model_file);
+            MocoProblem& problem = study.updProblem();
+            problem.setModelProcessor(ModelProcessor(model_in));
+
+            study.visualize(traj);
+
+            return EXIT_SUCCESS;
+
         } else {
             std::cerr << "Input parse failure." << std::endl;
             return EXIT_FAILURE;
