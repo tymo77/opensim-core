@@ -185,8 +185,6 @@ MocoTrajectory& generateLinkageAngles(Model& model, MocoTrajectory& mt) {
 
    // Loop through every instant in time.
    // Solve the kinematics. 
-   double passive_guess = 90.0 / 180.0 * 3.14159;
-   double motor_guess = 5.0 / 180.0 * 3.14159;
    for (int i_t = 0; i_t < Ntime; i_t++) {
 
        // Lock all the coordinates except the passive linkage ones.
@@ -195,18 +193,10 @@ MocoTrajectory& generateLinkageAngles(Model& model, MocoTrajectory& mt) {
            auto state_traj = mt.getState(coord.getStateVariableNames()[0]);
 
            double v;
-           if (IO::StartsWith(coord.getName(), "passive")) {
+           if (IO::StartsWith(coord.getName(), "passive") ||
+                   IO::StartsWith(coord.getName(), "motor")) {
                if (i_t == 0) {
-                   v = passive_guess;
-               } else {
-                   v = state_traj(i_t - 1);
-               }
-               coord.setLocked(s, false);
-               coord.setValue(s, v, false);
-               coord.setLocked(s, false);
-           } else if (IO::StartsWith(coord.getName(), "motor")) {
-               if (i_t == 0) {
-                   v = motor_guess;
+                   v = coord.getDefaultValue();
                } else {
                    v = state_traj(i_t - 1);
                }
