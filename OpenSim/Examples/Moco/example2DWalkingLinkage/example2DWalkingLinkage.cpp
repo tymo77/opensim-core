@@ -473,10 +473,10 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
             "/jointset/knee_l/knee_angle_l/value", {-90 * Pi / 180, 0});
     problem.setStateInfo(
             "/jointset/knee_r/knee_angle_r/value", {-90 * Pi / 180, 0});
-    problem.setStateInfo("/jointset/ankle_l/ankle_angle_l/value",
-            {-25 * Pi / 180, 25 * Pi / 180});
-    problem.setStateInfo("/jointset/ankle_r/ankle_angle_r/value",
-            {-25 * Pi / 180, 25 * Pi / 180});
+    //problem.setStateInfo("/jointset/ankle_l/ankle_angle_l/value",
+    //        {-25 * Pi / 180, 25 * Pi / 180});
+    //problem.setStateInfo("/jointset/ankle_r/ankle_angle_r/value",
+    //        {-25 * Pi / 180, 25 * Pi / 180});
     problem.setStateInfo("/jointset/lumbar/lumbar/value", {0, 20 * Pi / 180});
 
     double s_mech = 200;
