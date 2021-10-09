@@ -407,8 +407,18 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
             auto* motorEnergyGoal = problem.addGoal<MocoEnergyGoal>(
                     "energy_motor", motor_weight);
             motorEnergyGoal->setDivideByDuration(true);
-            motorEnergyGoal->addPair({"/motor_r", "/motor_r/current"});
-            motorEnergyGoal->addPair({"/motor_l", "/motor_l/current"});
+
+            if (has_idealtorque) {
+                // Torque and speed.
+                motorEnergyGoal->addPair(
+                        {"/motor_r", "/j_in_r/motor_angle_r/speed", false});
+                motorEnergyGoal->addPair(
+                        {"/motor_l", "/j_in_l/motor_angle_l/speed", false});
+            } else if (has_dcmotor) {
+                // Voltage and current.
+                motorEnergyGoal->addPair({"/motor_r", "/motor_r/current"});
+                motorEnergyGoal->addPair({"/motor_l", "/motor_l/current"});
+            }
             motorEnergyGoal->setSmoothScale(smooth);
         } else {
             OPENSIM_THROW(InvalidArgument,

@@ -27,10 +27,11 @@ using namespace OpenSim;
 MocoEnergyGoalPair::MocoEnergyGoalPair() { constructProperties(); }
 
 MocoEnergyGoalPair::MocoEnergyGoalPair(
-    std::string torque_var, std::string speed_var) {
+    std::string torque_var, std::string speed_var, bool negate) {
     constructProperties();
     set_torque_var(torque_var);
     set_speed_var(speed_var);
+    set_negate(negate);
 }
 
 void MocoEnergyGoalPair::constructProperties() {

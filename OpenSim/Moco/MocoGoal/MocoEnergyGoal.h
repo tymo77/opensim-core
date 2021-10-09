@@ -42,7 +42,7 @@ public:
 
 
     MocoEnergyGoalPair();
-    MocoEnergyGoalPair(std::string torque_var, std::string speed_var);
+    MocoEnergyGoalPair(std::string torque_var, std::string speed_var, bool negate = false);
 
 private:
     void constructProperties();
