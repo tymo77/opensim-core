@@ -275,7 +275,8 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
         std::string track_file, double speed, double motor_weight,
         double track_weight, double speed_bound, double motor_bound,
         std::string scaling_method, int Nmesh, int Nparallel,
-        std::string fn_prefix, int eff_exp, int NmaxIts, std::string motor_mode,
+        std::string fn_prefix, int eff_exp_muscle, int eff_exp_motor, int NmaxIts,
+        std::string motor_mode,
         double smooth, double k_pea, double t_pea) {
 
     using SimTK::Pi;
@@ -396,7 +397,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
 
             auto* motorEffortGoal =
                     problem.addGoal<MocoControlGoal>("effort_motor", 10);
-            motorEffortGoal->setExponent(eff_exp);
+            motorEffortGoal->setExponent(eff_exp_motor);
             motorEffortGoal->setDivideByDuration(true);
             motorEffortGoal->setWeightForControlPattern(
                     ".*", 0); // Set everything to 0 first.
@@ -430,7 +431,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     // Effort over time.
     auto* muscleEffortGoal =
             problem.addGoal<MocoControlGoal>("effort_muscle", 10);
-    muscleEffortGoal->setExponent(eff_exp);
+    muscleEffortGoal->setExponent(eff_exp_muscle);
     muscleEffortGoal->setDivideByDuration(true);
 
     if (has_dcmotor || has_idealtorque) {
@@ -590,14 +591,14 @@ int main(int argc, char* argv[]) {
                 motor_mode;
         double motor_weight, track_weight, speed_bound, motor_bound, speed,
                 smooth, k_pea, t_pea;
-        int Nmesh, Nparallel, eff_exp, NmaxIts;
+        int Nmesh, Nparallel, eff_exp_motor, eff_exp_muscle, NmaxIts;
 
         // Log the version for reference.
         std::cout << "2D Gait Generation -- Tyler Morrison 2021" << std::endl;
         std::cout << "Version compiled " << __DATE__ << " at " __TIME__ << "."
                   << std::endl;
 
-        if (argc == 18) {
+        if (argc == 19) {
             std::cout << "Run in two-step track + predict mode..." << std::endl;
             model_file = argv[1];
             guess_file = argv[2];
@@ -610,13 +611,14 @@ int main(int argc, char* argv[]) {
             Nmesh = atoi(argv[9]);
             Nparallel = atoi(argv[10]);
             speed = atof(argv[11]);
-            eff_exp = atoi(argv[12]);
-            NmaxIts = atoi(argv[13]);
-            motor_mode = argv[14];
-            smooth = atof(argv[15]);
-            k_pea = atof(argv[16]);
-            t_pea = atof(argv[17]);
-        } else if (argc == 16) {
+            eff_exp_muscle = atoi(argv[12]);
+            eff_exp_motor = atoi(argv[13]);
+            NmaxIts = atoi(argv[14]);
+            motor_mode = argv[15];
+            smooth = atof(argv[16]);
+            k_pea = atof(argv[17]);
+            t_pea = atof(argv[18]);
+        } else if (argc == 17) {
             std::cout << "Run in one-step predict mode..." << std::endl;
             model_file = argv[1];
             guess_file = argv[2];
@@ -629,12 +631,13 @@ int main(int argc, char* argv[]) {
             Nmesh = atoi(argv[7]);
             Nparallel = atoi(argv[8]);
             speed = atof(argv[9]);
-            eff_exp = atoi(argv[10]);
-            NmaxIts = atoi(argv[11]);
-            motor_mode = argv[12];
-            smooth = atof(argv[13]);
-            k_pea = atof(argv[14]);
-            t_pea = atof(argv[15]);
+            eff_exp_muscle = atoi(argv[10]);
+            eff_exp_motor = atoi(argv[11]);
+            NmaxIts = atoi(argv[12]);
+            motor_mode = argv[13];
+            smooth = atof(argv[14]);
+            k_pea = atof(argv[15]);
+            t_pea = atof(argv[16]);
         } else if (argc == 3) {
             std::cout << "Playback mode..." << std::endl;
             model_file = argv[1];
@@ -668,12 +671,13 @@ int main(int argc, char* argv[]) {
         std::cout << "9: Nmesh: " << Nmesh << std::endl;
         std::cout << "10: Nparallel: " << Nparallel << std::endl;
         std::cout << "11: Walking Speed: " << speed << std::endl;
-        std::cout << "12: Effort Exponent: " << eff_exp << std::endl;
-        std::cout << "13: Max Iterations: " << NmaxIts << std::endl;
-        std::cout << "14: Motor Cost Mode: " << motor_mode << std::endl;
-        std::cout << "15: Energy smoothing constant: " << smooth << std::endl;
-        std::cout << "16: Parallel spring constant: " << k_pea << std::endl;
-        std::cout << "17: Parallel spring equilibrium: " << t_pea << std::endl;
+        std::cout << "12: Muscle Effort Exponent: " << eff_exp_muscle << std::endl;
+        std::cout << "13: Motor Effort Exponent: " << eff_exp_motor << std::endl;
+        std::cout << "14: Max Iterations: " << NmaxIts << std::endl;
+        std::cout << "15: Motor Cost Mode: " << motor_mode << std::endl;
+        std::cout << "16: Energy smoothing constant: " << smooth << std::endl;
+        std::cout << "17: Parallel spring constant: " << k_pea << std::endl;
+        std::cout << "18: Parallel spring equilibrium: " << t_pea << std::endl;
         std::cout << "***************************************" << std::endl;
 
         // Solve the initial tracking problem.
@@ -681,14 +685,15 @@ int main(int argc, char* argv[]) {
 
         auto track_sol = gaitPrediction(model_file, guess_traj, track_file,
                 speed, motor_weight, track_weight, speed_bound, motor_bound,
-                scaling_method, Nmesh, Nparallel, "track", eff_exp, NmaxIts,
-                motor_mode, smooth, k_pea, t_pea);
+                scaling_method, Nmesh, Nparallel, "track", eff_exp_muscle, eff_exp_motor,
+                NmaxIts, motor_mode, smooth, k_pea, t_pea);
 
         // Solve the pure prediction problem.
         // Ignores the track file and the track weight.
         gaitPrediction(model_file, track_sol, "", speed, motor_weight, 0,
                 speed_bound, motor_bound, scaling_method, Nmesh, Nparallel,
-                "predict", eff_exp, NmaxIts, motor_mode, smooth, k_pea, t_pea);
+                "predict", eff_exp_muscle, eff_exp_motor, NmaxIts, motor_mode,
+                smooth, k_pea, t_pea);
 
     } catch (const std::exception& e) { std::cout << e.what() << std::endl; }
     return EXIT_SUCCESS;
