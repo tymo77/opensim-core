@@ -276,8 +276,8 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
         double track_weight, double speed_bound, double motor_bound,
         std::string scaling_method, int Nmesh, int Nparallel,
         std::string fn_prefix, int eff_exp_muscle, int eff_exp_motor, int NmaxIts,
-        std::string motor_mode,
-        double smooth, double k_pea, double t_pea) {
+        std::string motor_mode, double smooth, double k_pea,
+        double t_pea, double gamma_lim, double lambda_lim) {
 
     using SimTK::Pi;
 
@@ -517,7 +517,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
         motor.get_enforce_current_limit(false);
     }
 
-    problem.setMultiplierBounds({-3000, 3000});
+    problem.setMultiplierBounds({-lambda_lim, lambda_lim});
 
     if (has_dcmotor || has_idealtorque) {
         problem.setControlInfo(
@@ -540,7 +540,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     solver.set_optim_max_iterations(NmaxIts);
     solver.set_enforce_constraint_derivatives(true);
     solver.set_minimize_lagrange_multipliers(false);
-    solver.set_velocity_correction_bounds({-1, 1});
+    solver.set_velocity_correction_bounds({-gamma_lim, gamma_lim});
     solver.set_optim_ipopt_opt_filename(fn_prefix + ".opt");
 
     // Set the guess.
@@ -598,7 +598,7 @@ int main(int argc, char* argv[]) {
         std::string model_file, guess_file, track_file, scaling_method,
                 motor_mode;
         double motor_weight, track_weight, speed_bound, motor_bound, speed,
-                smooth, k_pea, t_pea;
+                smooth, k_pea, t_pea, gamma_lim, lambda_lim;
         int Nmesh, Nparallel, eff_exp_motor, eff_exp_muscle, NmaxIts;
 
         // Log the version for reference.
@@ -626,7 +626,9 @@ int main(int argc, char* argv[]) {
             smooth = atof(argv[16]);
             k_pea = atof(argv[17]);
             t_pea = atof(argv[18]);
-        } else if (argc == 17) {
+            gamma_lim = atof(argv[19]);
+            lambda_lim = atof(argv[20]);
+        } else if (argc == 19) {
             std::cout << "Run in one-step predict mode..." << std::endl;
             model_file = argv[1];
             guess_file = argv[2];
@@ -646,6 +648,8 @@ int main(int argc, char* argv[]) {
             smooth = atof(argv[14]);
             k_pea = atof(argv[15]);
             t_pea = atof(argv[16]);
+            gamma_lim = atof(argv[17]);
+            lambda_lim = atof(argv[18]);
         } else if (argc == 3) {
             std::cout << "Generate contact force mode..." << std::endl;
             model_file = argv[1];
@@ -704,22 +708,31 @@ int main(int argc, char* argv[]) {
         std::cout << "16: Energy smoothing constant: " << smooth << std::endl;
         std::cout << "17: Parallel spring constant: " << k_pea << std::endl;
         std::cout << "18: Parallel spring equilibrium: " << t_pea << std::endl;
+        std::cout << "19: Velocity correction limit: " << gamma_lim << std::endl;
+        std::cout << "20: Constraint force limit: " << lambda_lim << std::endl;
         std::cout << "***************************************" << std::endl;
 
         // Solve the initial tracking problem.
         MocoTrajectory guess_traj(guess_file);
 
+        if (predict_only) {
+            gaitPrediction(model_file, guess_traj, "", speed, motor_weight, 0,
+                    speed_bound, motor_bound, scaling_method, Nmesh, Nparallel,
+                    "predict", eff_exp_muscle, eff_exp_motor, NmaxIts,
+                    motor_mode, smooth, k_pea, t_pea, gamma_lim, lambda_lim);
+        } else {
         auto track_sol = gaitPrediction(model_file, guess_traj, track_file,
                 speed, motor_weight, track_weight, speed_bound, motor_bound,
                 scaling_method, Nmesh, Nparallel, "track", eff_exp_muscle, eff_exp_motor,
-                NmaxIts, motor_mode, smooth, k_pea, t_pea);
+                NmaxIts, motor_mode, smooth, k_pea, t_pea, gamma_lim, lambda_lim);
 
         // Solve the pure prediction problem.
         // Ignores the track file and the track weight.
         gaitPrediction(model_file, track_sol, "", speed, motor_weight, 0,
                 speed_bound, motor_bound, scaling_method, Nmesh, Nparallel,
                 "predict", eff_exp_muscle, eff_exp_motor, NmaxIts, motor_mode,
-                smooth, k_pea, t_pea);
+                smooth, k_pea, t_pea, gamma_lim, lambda_lim);
+        }
 
     } catch (const std::exception& e) { std::cout << e.what() << std::endl; }
     return EXIT_SUCCESS;
