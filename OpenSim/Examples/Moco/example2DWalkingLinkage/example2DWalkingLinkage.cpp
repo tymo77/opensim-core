@@ -514,7 +514,9 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
         std::string scaling_method, int Nmesh, int Nparallel,
         std::string fn_prefix, int eff_exp_muscle, int eff_exp_motor, int NmaxIts,
         std::string motor_mode, double smooth, double k_pea,
-        double t_pea, double gamma_lim, double lambda_lim) {
+        double t_pea, double gamma_lim, double lambda_lim,
+        std::string linkage_type,
+        double l0, double l1, double l2, double l3) {
 
     using SimTK::Pi;
 
@@ -524,11 +526,6 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     // Define the optimal control problem.
     // ===================================
     Model model_in(model_file);
-    double l0, l1, l2, l3;
-    l0 = 0.07;
-    l1 = 0.05;
-    l2 = 0.11;
-    l3 = 0.1;
     configureLinkage(
             l0, l1, l2, l3, model_in, -Pi / 180.0 * 5.0, -Pi / 180.0 * 175.0);
     model_in.print("test.osim");
@@ -841,9 +838,9 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
 int main(int argc, char* argv[]) {
     try {
         std::string model_file, guess_file, track_file, scaling_method,
-                motor_mode;
+                motor_mode, linkage_type;
         double motor_weight, track_weight, speed_bound, motor_bound, speed,
-                smooth, k_pea, t_pea, gamma_lim, lambda_lim;
+                smooth, k_pea, t_pea, gamma_lim, lambda_lim, l0, l1, l2, l3;
         int Nmesh, Nparallel, eff_exp_motor, eff_exp_muscle, NmaxIts;
 
         // Log the version for reference.
@@ -851,7 +848,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Version compiled " << __DATE__ << " at " __TIME__ << "."
                   << std::endl;
         bool predict_only;
-        if (argc == 21) {
+        if (argc == 26) {
             std::cout << "Run in two-step track + predict mode..." << std::endl;
             predict_only = false;
             model_file = argv[1];
@@ -874,7 +871,12 @@ int main(int argc, char* argv[]) {
             t_pea = atof(argv[18]);
             gamma_lim = atof(argv[19]);
             lambda_lim = atof(argv[20]);
-        } else if (argc == 19) {
+            linkage_type = argv[21];
+            l0 = atof(argv[22]);
+            l1 = atof(argv[23]);
+            l2 = atof(argv[24]);
+            l3 = atof(argv[25]);
+        } else if (argc == 24) {
             std::cout << "Run in one-step predict mode..." << std::endl;
             predict_only = true;
             model_file = argv[1];
@@ -897,6 +899,11 @@ int main(int argc, char* argv[]) {
             t_pea = atof(argv[16]);
             gamma_lim = atof(argv[17]);
             lambda_lim = atof(argv[18]);
+            linkage_type = argv[19];
+            l0 = atof(argv[20]);
+            l1 = atof(argv[21]);
+            l2 = atof(argv[22]);
+            l3 = atof(argv[23]);
         } else if (argc == 3) {
             std::cout << "Generate contact force mode..." << std::endl;
             model_file = argv[1];
@@ -957,6 +964,11 @@ int main(int argc, char* argv[]) {
         std::cout << "18: Parallel spring equilibrium: " << t_pea << std::endl;
         std::cout << "19: Velocity correction limit: " << gamma_lim << std::endl;
         std::cout << "20: Constraint force limit: " << lambda_lim << std::endl;
+        std::cout << "21: Linkage type: " << linkage_type << std::endl;
+        std::cout << "22: Link length 0: " << l0 << std::endl;
+        std::cout << "23: Link length 1: " << l1 << std::endl;
+        std::cout << "24: Link length 2: " << l2 << std::endl;
+        std::cout << "25: Link length 3: " << l3 << std::endl;
         std::cout << "***************************************" << std::endl;
 
         // Solve the initial tracking problem.
@@ -966,19 +978,20 @@ int main(int argc, char* argv[]) {
             gaitPrediction(model_file, guess_traj, "", speed, motor_weight, 0,
                     speed_bound, motor_bound, scaling_method, Nmesh, Nparallel,
                     "predict", eff_exp_muscle, eff_exp_motor, NmaxIts,
-                    motor_mode, smooth, k_pea, t_pea, gamma_lim, lambda_lim);
+                    motor_mode, smooth, k_pea, t_pea, gamma_lim, lambda_lim, linkage_type, l0, l1, l2, l3);
         } else {
         auto track_sol = gaitPrediction(model_file, guess_traj, track_file,
                 speed, motor_weight, track_weight, speed_bound, motor_bound,
-                scaling_method, Nmesh, Nparallel, "track", eff_exp_muscle, eff_exp_motor,
-                NmaxIts, motor_mode, smooth, k_pea, t_pea, gamma_lim, lambda_lim);
+                scaling_method, Nmesh, Nparallel, "track", eff_exp_muscle, eff_exp_motor, NmaxIts, motor_mode, smooth, k_pea, t_pea,
+                    gamma_lim, lambda_lim, linkage_type, l0, l1, l2, l3);
 
         // Solve the pure prediction problem.
         // Ignores the track file and the track weight.
         gaitPrediction(model_file, track_sol, "", speed, motor_weight, 0,
                 speed_bound, motor_bound, scaling_method, Nmesh, Nparallel,
                 "predict", eff_exp_muscle, eff_exp_motor, NmaxIts, motor_mode,
-                smooth, k_pea, t_pea, gamma_lim, lambda_lim);
+                smooth, k_pea, t_pea, gamma_lim, lambda_lim, linkage_type, l0,
+                l1, l2, l3);
         }
 
     } catch (const std::exception& e) { std::cout << e.what() << std::endl; }
