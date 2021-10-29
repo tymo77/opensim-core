@@ -605,9 +605,10 @@ int main(int argc, char* argv[]) {
         std::cout << "2D Gait Generation -- Tyler Morrison 2021" << std::endl;
         std::cout << "Version compiled " << __DATE__ << " at " __TIME__ << "."
                   << std::endl;
-
-        if (argc == 19) {
+        bool predict_only;
+        if (argc == 21) {
             std::cout << "Run in two-step track + predict mode..." << std::endl;
+            predict_only = false;
             model_file = argv[1];
             guess_file = argv[2];
             track_file = argv[3];
@@ -630,6 +631,7 @@ int main(int argc, char* argv[]) {
             lambda_lim = atof(argv[20]);
         } else if (argc == 19) {
             std::cout << "Run in one-step predict mode..." << std::endl;
+            predict_only = true;
             model_file = argv[1];
             guess_file = argv[2];
             track_file = "";
