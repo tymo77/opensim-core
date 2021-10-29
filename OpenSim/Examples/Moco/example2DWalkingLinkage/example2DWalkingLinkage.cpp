@@ -412,9 +412,9 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
             if (has_idealtorque) {
                 // Torque and speed.
                 motorEnergyGoal->addPair(
-                        {"/motor_r", "/j_in_r/motor_angle_r/speed", false});
+                        {"/motor_r", "/j_in_r/motor_angle_r/speed", true});
                 motorEnergyGoal->addPair(
-                        {"/motor_l", "/j_in_l/motor_angle_l/speed", false});
+                        {"/motor_l", "/j_in_l/motor_angle_l/speed", true});
             } else if (has_dcmotor) {
                 // Voltage and current.
                 motorEnergyGoal->addPair({"/motor_r", "/motor_r/current"});
