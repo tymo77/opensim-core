@@ -245,31 +245,35 @@ std::unique_ptr<CasOC::Solver> MocoCasADiSolver::createCasOCSolver(
         solverOptions["print_user_options"] = "yes";
         // Set the optional options file name.
         solverOptions["option_file_name"] = get_optim_ipopt_opt_filename();
-        if (get_verbosity() < 2) {
-            solverOptions["print_level"] = 0;
-        } else if (get_optim_ipopt_print_level() != -1) {
-            solverOptions["print_level"] = get_optim_ipopt_print_level();
-        }
-        solverOptions["hessian_approximation"] =
-                get_optim_hessian_approximation();
+        // If we have an options file, we need to give it all the options we want to use.
+        // This is because clobbering is disabled currently.
+        if (!get_optim_ipopt_opt_filename().empty()) {
+            if (get_verbosity() < 2) {
+                solverOptions["print_level"] = 0;
+            } else if (get_optim_ipopt_print_level() != -1) {
+                solverOptions["print_level"] = get_optim_ipopt_print_level();
+            }
+            solverOptions["hessian_approximation"] =
+                    get_optim_hessian_approximation();
 
-        if (get_optim_max_iterations() != -1)
-            solverOptions["max_iter"] = get_optim_max_iterations();
+            if (get_optim_max_iterations() != -1)
+                solverOptions["max_iter"] = get_optim_max_iterations();
 
-        if (get_optim_convergence_tolerance() != -1) {
-            const auto& tol = get_optim_convergence_tolerance();
-            // This is based on what Simbody does.
-            solverOptions["tol"] = tol;
-            solverOptions["dual_inf_tol"] = tol;
-            solverOptions["compl_inf_tol"] = tol;
-            solverOptions["acceptable_tol"] = tol;
-            solverOptions["acceptable_dual_inf_tol"] = tol;
-            solverOptions["acceptable_compl_inf_tol"] = tol;
-        }
-        if (get_optim_constraint_tolerance() != -1) {
-            const auto& tol = get_optim_constraint_tolerance();
-            solverOptions["constr_viol_tol"] = tol;
-            solverOptions["acceptable_constr_viol_tol"] = tol;
+            if (get_optim_convergence_tolerance() != -1) {
+                const auto& tol = get_optim_convergence_tolerance();
+                // This is based on what Simbody does.
+                solverOptions["tol"] = tol;
+                solverOptions["dual_inf_tol"] = tol;
+                solverOptions["compl_inf_tol"] = tol;
+                solverOptions["acceptable_tol"] = tol;
+                solverOptions["acceptable_dual_inf_tol"] = tol;
+                solverOptions["acceptable_compl_inf_tol"] = tol;
+            }
+            if (get_optim_constraint_tolerance() != -1) {
+                const auto& tol = get_optim_constraint_tolerance();
+                solverOptions["constr_viol_tol"] = tol;
+                solverOptions["acceptable_constr_viol_tol"] = tol;
+            }
         }
     }
 
