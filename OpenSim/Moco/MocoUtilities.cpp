@@ -327,6 +327,48 @@ TimeSeriesTable OpenSim::createExternalLoadsTableForGait(Model model,
     return externalForcesTableFlat;
 }
 
+TimeSeriesTable OpenSim::createContactForceTableForGait(Model model,
+        const StatesTrajectory& trajectory,
+        const std::vector<std::string>& forcePaths) {
+    model.initSystem();
+    TimeSeriesTableVec3 externalForcesTable;
+    int count = 0;
+    int N_forces = forcePaths.size();
+    std::vector<std::string> labels;
+    for (const auto& state : trajectory) {
+        model.realizeVelocity(state);
+        SimTK::Vec3 torques(0);
+        SimTK::RowVector_<SimTK::Vec3> row(N_forces*2);
+
+        // Loop through all Forces.
+        int forceRowCount = 0;
+        for (const auto& smoothForce : forcePaths) {
+            Array<double> forceValues = model.getComponent<Force>(smoothForce)
+                                                .getRecordValues(state);
+            SimTK::Vec3 forces =
+                    SimTK::Vec3(forceValues[0], forceValues[1], forceValues[2]);
+            SimTK::Vec3 torques =
+                    SimTK::Vec3(forceValues[3], forceValues[4], forceValues[5]);
+
+            row(forceRowCount) = forces;
+            row(forceRowCount + 1) = torques;
+            if (count == 0) {
+                labels.push_back(smoothForce + "_force_");
+                labels.push_back(smoothForce + "_torque_");
+            }
+            forceRowCount += 2;
+        }
+        externalForcesTable.appendRow(state.getTime(), row);
+        ++count;
+    }
+    // Create table.
+    externalForcesTable.setColumnLabels(labels);
+    TimeSeriesTable externalForcesTableFlat =
+            externalForcesTable.flatten({"x", "y", "z"});
+
+    return externalForcesTableFlat;
+}
+
 TimeSeriesTable OpenSim::createExternalLoadsTableForGait(Model model,
         const MocoTrajectory& trajectory,
         const std::vector<std::string>& forcePathsRightFoot,
@@ -334,4 +376,11 @@ TimeSeriesTable OpenSim::createExternalLoadsTableForGait(Model model,
     StatesTrajectory statesTraj = trajectory.exportToStatesTrajectory(model);
     return createExternalLoadsTableForGait(std::move(model), statesTraj,
             forcePathsRightFoot, forcePathsLeftFoot);
+}
+
+TimeSeriesTable OpenSim::createContactForceTableForGait(Model model,
+        const MocoTrajectory& trajectory,
+        const std::vector<std::string>& forcePaths) {
+    StatesTrajectory statesTraj = trajectory.exportToStatesTrajectory(model);
+    return createContactForceTableForGait(std::move(model), statesTraj, forcePaths);
 }

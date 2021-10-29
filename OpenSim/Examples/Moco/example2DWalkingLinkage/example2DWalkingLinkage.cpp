@@ -569,16 +569,24 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
 
     // Extract ground reaction forces.
     // ===============================
+    std::vector<std::string> contact_all;
     std::vector<std::string> contact_r;
     std::vector<std::string> contact_l;
     contact_r.push_back("contactHeel_r");
     contact_r.push_back("contactFront_r");
     contact_l.push_back("contactHeel_l");
     contact_l.push_back("contactFront_l");
+    contact_all = contact_r;
+    contact_all.insert(std::end(contact_all), std::begin(contact_l), std::end(contact_l));
     TimeSeriesTable externalForcesTableFlat =
             createExternalLoadsTableForGait(model, full, contact_r, contact_l);
     STOFileAdapter::write(
-            externalForcesTableFlat, fn_prefix + +"_solutionGRF_fullcycle.sto");
+            externalForcesTableFlat, fn_prefix +"_solutionGRF_fullcycle.sto");
+
+    TimeSeriesTable contactForcesTableFlat =
+            createContactForceTableForGait(model, full, contact_all);
+    STOFileAdapter::write(
+            contactForcesTableFlat, fn_prefix +"_solutionContact_fullcycle.sto");
 
     // study.visualize(full);
 
@@ -639,7 +647,7 @@ int main(int argc, char* argv[]) {
             k_pea = atof(argv[15]);
             t_pea = atof(argv[16]);
         } else if (argc == 3) {
-            std::cout << "Playback mode..." << std::endl;
+            std::cout << "Generate contact force mode..." << std::endl;
             model_file = argv[1];
             std::string trajectory_file = argv[2];
 
@@ -650,7 +658,25 @@ int main(int argc, char* argv[]) {
             MocoProblem& problem = study.updProblem();
             problem.setModelProcessor(ModelProcessor(model_in));
 
-            study.visualize(traj);
+
+            // Extract ground reaction forces.
+            // ===============================
+            std::vector<std::string> contact_all;
+            contact_all.push_back("contactHeel_r");
+            contact_all.push_back("contactFront_r");
+            contact_all.push_back("contactHeel_l");
+            contact_all.push_back("contactFront_l");
+
+            auto split_pos = trajectory_file.find("_");
+            std::string prefix = trajectory_file.substr(0, split_pos);
+
+            TimeSeriesTable contactForcesTableFlat =
+                    createContactForceTableForGait(
+                            model_in, traj, contact_all);
+
+            std::string fn = prefix + "_solutionContact_fullcycle.sto";
+            std::cout << "Writing contact forces to " << fn << std::endl;
+            STOFileAdapter::write(contactForcesTableFlat, fn);
 
             return EXIT_SUCCESS;
 

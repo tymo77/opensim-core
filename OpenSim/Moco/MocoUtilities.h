@@ -237,6 +237,11 @@ TimeSeriesTable createExternalLoadsTableForGait(Model model,
         const std::vector<std::string>& forcePathsRightFoot,
         const std::vector<std::string>& forcePathsLeftFoot);
 
+OSIMMOCO_API
+TimeSeriesTable createContactForceTableForGait(Model model,
+        const StatesTrajectory& trajectory,
+        const std::vector<std::string>& forcePaths);
+
 /// Same as above, but with a MocoTrajectory instead of a StatesTrajectory.
 /// @ingroup mocoutil
 OSIMMOCO_API
@@ -245,6 +250,10 @@ TimeSeriesTable createExternalLoadsTableForGait(Model model,
         const std::vector<std::string>& forcePathsRightFoot,
         const std::vector<std::string>& forcePathsLeftFoot);
 
+OSIMMOCO_API
+TimeSeriesTable createContactForceTableForGait(Model model,
+        const MocoTrajectory& trajectory,
+        const std::vector<std::string>& forcePaths);
 } // namespace OpenSim
 
 #endif // OPENSIM_MOCOUTILITIES_H
