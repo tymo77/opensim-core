@@ -44,6 +44,7 @@
 
 #include <OpenSim/Actuators/DCMotor.h>
 #include <OpenSim/Actuators/TorqueActuator.h>
+#include <OpenSim/Actuators/CoordinateActuator.h>
 #include <OpenSim/Actuators/SpringGeneralizedForce.h>
 #include <OpenSim/Common/STOFileAdapter.h>
 #include <OpenSim/Common/TableUtilities.h>
@@ -75,6 +76,23 @@ std::vector<double> boundIntersection(
     // Compare the lower bounds.
     if (b1[0] < b2[0]) { b1[0] = b2[0]; } // Lower bound of b2 is greater than lower bound of b1.
     if (b1[1] > b2[1]) { b1[1] = b2[1]; } // Upper bound of b2 is less than the upper bound of b2.
+    return b1;
+}
+
+std::vector<double> boundUnion(
+        std::vector<double> b1, std::vector<double> b2) {
+
+    // Ensure the two bound sets are sorted.
+    std::sort(b1.begin(), b1.end());
+    std::sort(b2.begin(), b2.end());
+
+    // Compare the lower bounds.
+    if (b1[0] > b2[0]) {
+        b1[0] = b2[0];
+    } // Lower bound of b2 is less than lower bound of b1.
+    if (b1[1] < b2[1]) {
+        b1[1] = b2[1];
+    } // Upper bound of b2 is greater than the upper bound of b2.
     return b1;
 }
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -184,13 +202,19 @@ MocoTrajectory genInitialGuess(MocoStudy study, MocoTrajectory initial_guess) {
     return generated_guess;
 }
 
-std::vector<double> linkageKinematicsT2(
-        double t2, double l0, double l1, double l2, double l3) {
+std::vector<double> fourbarKinematicsT2(
+        double t2, double alpha, double l0, double l1, double l2, double l3) {
     using SimTK::Pi;
-
+    // Account for the base tilt.
+    t2 = t2 + alpha;
     // Solving for theta 3.
     double l12sq = pow(l1, 2) + pow(l2, 2) - 2 * l1 * l2 * cos(Pi - t2);
     double cosbeta = (l12sq - pow(l0, 2) - pow(l3, 2)) / (-2 * l0 * l3);
+    if (cosbeta > 1) {
+        cosbeta = 1;
+    } else if (cosbeta < -1) {
+        cosbeta = -1;
+    }
     double sinbeta = sqrt(1.0 - pow(cosbeta, 2));
     double beta = atan2(sinbeta, cosbeta);
     double t3 = Pi / 2 - beta;
@@ -206,12 +230,14 @@ std::vector<double> linkageKinematicsT2(
     double s1 = (-l2 * s2 * l3 * c3 + (l1 + l2 * c2) * (l3 * s3 - l0)) / D;
     double t1 = atan2(s1, c1);
 
-    return {t1, t2, t3};
+    return {t1 - alpha, t2, t3 - alpha};
 }
 
-std::vector<std::vector<double>> linkageKinematicsT3(
-        double t3, double l0, double l1, double l2, double l3) {
+std::vector<std::vector<double>> fourbarKinematicsT3(
+        double t3, double alpha, double l0, double l1, double l2, double l3) {
     using SimTK::Pi;
+    // Account for the base tilt.
+    t3 = t3 + alpha;
     
     double s3 = sin(t3);
     double c3 = cos(t3);
@@ -222,14 +248,14 @@ std::vector<std::vector<double>> linkageKinematicsT3(
                2 * l0 * l3 * s3;
     double D = pow(B, 2) - pow(C, 2) + pow(A, 2);
     double tsol1, tsol2;
-    if (D < 0) {
-        // In this case, we find the "reaching angle".
-        tsol1 = (-B ) / (C - A);
-        tsol2 = (-B ) / (C - A);
-    } else {
+    //if (D < 0) {
+    //    // In this case, we find the "reaching angle".
+    //    tsol1 = (-B ) / (C - A);
+    //    tsol2 = (-B ) / (C - A);
+    //} else {
         tsol1 = (-B + sqrt(D)) / (C - A);
         tsol2 = (-B - sqrt(D)) / (C - A);
-    }
+    //}
 
     double t1_sol1 = 2 * atan(tsol1);
     double t1_sol2 = 2 * atan(tsol2);
@@ -242,14 +268,47 @@ std::vector<std::vector<double>> linkageKinematicsT3(
     double t2_sol1 = atan2(s12_sol1, c12_sol1) - t1_sol1;
     double t2_sol2 = atan2(s12_sol2, c12_sol2) - t1_sol2;
 
-    return {{t1_sol1, t2_sol1, t3}, {t1_sol2, t2_sol2, t3}};
+    return {{t1_sol1 - alpha, t2_sol1, t3 - alpha},
+            {t1_sol2 - alpha, t2_sol2, t3 - alpha}};
 }
 
-void configureLinkage(double l0, double l1, double l2, double l3, Model& model, double ub, double lb) {
+std::vector<double> sliderKinematicsL1(double l1, double alpha, double l0, double l3) {
+    using std::pow;
+    double s3 = (pow(l1, 2) - pow(l3, 2) - pow(l0, 2)) / (-2 * l0 * l3);
+    double c3 = sqrt(1 - pow(s3, 2));
+    double t3 = atan2(s3, c3);
+
+    double c1 = (l3 * c3) / (l1);
+    double s1 = (l3 * s3 - l0) / (l1);
+    double t1 = atan2(s1, c1);
+
+    return {t1 - alpha, l1, t3 - alpha};
+}
+
+std::vector<double> sliderKinematicsT3(double t3, double alpha, double l0, double l3) {
+    using std::pow;
+    // Account for the base tilt.
+    t3 = t3 + alpha;
+    double s3 = sin(t3);
+    double c3 = cos(t3);
+
+    double l1 = sqrt(pow(l3, 2) + pow(l0, 2) - 2 * l0 * l3 * s3);
+
+    double c1 = (l3 * c3) / (l1);
+    double s1 = (l3 * s3 - l0) / (l1);
+    double t1 = atan2(s1, c1);
+
+    return {t1 - alpha, l1, t3 - alpha};
+}
+
+void configureFourbar(int am, double x0, double y0, double l1, double l2, double l3, Model& model, double ub, double lb) {
+
+    double l0 = sqrt(std::pow(x0, 2) + std::pow(y0, 2));
+    double alpha = atan2(x0, y0);
 
     // Get the angles for t1 and t3 that correspont to the upper and lower bounds of t2.
-    auto angles1 = linkageKinematicsT2(lb, l0, l1, l2, l3);
-    auto angles2 = linkageKinematicsT2(ub, l0, l1, l2, l3);
+    auto angles1 = fourbarKinematicsT2(lb, alpha, l0, l1, l2, l3);
+    auto angles2 = fourbarKinematicsT2(ub, alpha, l0, l1, l2, l3);
 
     std::vector<double> t1_kinbounds = {angles1[0], angles2[0]};
     std::vector<double> t2_kinbounds = {lb, ub}; 
@@ -259,8 +318,8 @@ void configureLinkage(double l0, double l1, double l2, double l3, Model& model, 
     std::sort(t1_kinbounds.begin(), t1_kinbounds.end());
     std::sort(t3_kinbounds.begin(), t3_kinbounds.end());
 
-    std::cout << "Implied kinematic limits, t1: " << t1_kinbounds[0] << " to " << t1_kinbounds[1]
-              << std::endl;
+    std::cout << "Implied kinematic limits, t1: " << t1_kinbounds[0] << " to "
+              << t1_kinbounds[1] << std::endl;
     std::cout << "Implied kinematic limits, t2: " << t2_kinbounds[0] << " to "
               << t2_kinbounds[1] << std::endl;
     std::cout << "Implied kinematic limits, t3: " << t3_kinbounds[0] << " to "
@@ -303,7 +362,7 @@ void configureLinkage(double l0, double l1, double l2, double l3, Model& model, 
         // Set the input joint transformations.
         PhysicalOffsetFrame& j_in_parent = j_in.upd_frames(0);
         PhysicalOffsetFrame& j_in_child = j_in.upd_frames(1);
-        j_in_parent.set_translation({0, -l_tibia + l0, 0});
+        j_in_parent.set_translation({x0, -l_tibia + y0, 0});
         j_in_child.set_translation({l1 / 2, 0, 0});
 
         // Set the coupler link geometry.
@@ -333,43 +392,60 @@ void configureLinkage(double l0, double l1, double l2, double l3, Model& model, 
 
         // Set the default angles for the linkage angles according to the ankle
         // default.
-        auto default_angles = linkageKinematicsT3(
-                ankle_angle.getDefaultValue(), l0, l1, l2, l3);
-        std::cout << "Default angles 1: " << default_angles[0][0] << " "
+        auto default_angles = fourbarKinematicsT3(
+                ankle_angle.getDefaultValue(), alpha, l0, l1, l2, l3);
+        std::cout << "Default angles 0: " << default_angles[0][0] << " "
                   << default_angles[0][1] << " " << default_angles[0][2]
                   << std::endl;
         std::cout << "Default angles 1: " << default_angles[1][0] << " "
                   << default_angles[1][1] << " " << default_angles[1][2]
                   << std::endl;
         // Check which solution assembly mode is within the t2 bounds.
-        int assembly_mode;
+        int assembly_index;
         if (default_angles[0][1] <= t2_kinbounds[1] &&
                 default_angles[0][1] >= t2_kinbounds[0]) {
-            assembly_mode = 0;
+            assembly_index = 0;
         } else if (default_angles[1][1] <= t2_kinbounds[1] &&
                    default_angles[1][1] >= t2_kinbounds[0]) {
-            assembly_mode = 1;
+            assembly_index = 1;
         } else {
             OPENSIM_THROW(Exception, "Default configuration is not within "
                                      "perscribed bounds for passive angle");
         }
-        motor_angle.setDefaultValue(default_angles[assembly_mode][0]);
-        passive_angle1.setDefaultValue(default_angles[assembly_mode][1]);
 
+        std::cout << "Using assembly index: " << assembly_index << std::endl;
+        motor_angle.setDefaultValue(default_angles[assembly_index][0]);
+        passive_angle1.setDefaultValue(default_angles[assembly_index][1]);
 
-        auto lower_bound_sol = linkageKinematicsT3(
-                ankle_angle.getRangeMin(), l0, l1, l2, l3);
-        auto upper_bound_sol = linkageKinematicsT3(
-                ankle_angle.getRangeMax(), l0, l1, l2, l3);
-        std::vector<double> t1_anklebounds{lower_bound_sol[assembly_mode][0],
-                upper_bound_sol[assembly_mode][0]};
-        std::vector<double> t2_anklebounds{lower_bound_sol[assembly_mode][1],
-                upper_bound_sol[assembly_mode][1]};
-        std::vector<double> t3_anklebounds{lower_bound_sol[assembly_mode][2],
-                upper_bound_sol[assembly_mode][2]};
+        // Use the default angles to fix any angle wrapping errors in the kinematic limits of t1.
+        while (t1_kinbounds[0] > default_angles[assembly_index][0]) {
+            t1_kinbounds[0] -= 2 * SimTK::Pi;
+            std::cout << "Fixing a wrapping error in t1 lower bound."
+                      << std::endl;
+        }
+        while (t1_kinbounds[1] < default_angles[assembly_index][0]) {
+            t1_kinbounds[1] += 2 * SimTK::Pi;
+            std::cout << "Fixing a wrapping error in t1 upper bound."
+                      << std::endl;
+        }
+        std::sort(t1_kinbounds.begin(), t1_kinbounds.end());
+
+        // Get the bounds on the rest of the coordinates propocated by limits on ankle flexion.
+        // T3 bounds will be the intersection of the kinematic and ankle limit bounds.
+        std::vector<double> t3_anklebounds{
+                ankle_angle.getRangeMin(), ankle_angle.getRangeMax()};
+        std::sort(t3_anklebounds.begin(), t3_anklebounds.end());
+        auto t3_finalbounds = boundIntersection(t3_kinbounds, t3_anklebounds);
+
+        // The rest of the angles are determined by solving for their bounds when propogated from the bounds on t3.
+        auto lower_bound_sol = fourbarKinematicsT3(t3_finalbounds[0], alpha, l0, l1, l2, l3);
+        auto upper_bound_sol = fourbarKinematicsT3(t3_finalbounds[1], alpha, l0, l1, l2, l3);
+        std::vector<double> t1_anklebounds{lower_bound_sol[assembly_index][0],
+                upper_bound_sol[assembly_index][0]};
+        std::vector<double> t2_anklebounds{lower_bound_sol[assembly_index][1],
+                upper_bound_sol[assembly_index][1]};
         std::sort(t1_anklebounds.begin(), t1_anklebounds.end());
         std::sort(t2_anklebounds.begin(), t2_anklebounds.end());
-        std::sort(t3_anklebounds.begin(), t3_anklebounds.end());
 
         std::cout << "Implied limits based on " + side + " ankle motion, t1: "
                   << t1_anklebounds[0] << " to " << t1_anklebounds[1]
@@ -385,7 +461,6 @@ void configureLinkage(double l0, double l1, double l2, double l3, Model& model, 
         // and the kinematic bounds.
         auto t1_finalbounds = boundIntersection(t1_kinbounds, t1_anklebounds);
         auto t2_finalbounds = boundIntersection(t2_kinbounds, t2_anklebounds);
-        auto t3_finalbounds = boundIntersection(t3_kinbounds, t3_anklebounds);
         std::cout << "Final bounds, " + side + " t1: " << t1_finalbounds[0]
                   << " to "
                   << t1_finalbounds[1] << std::endl;
@@ -405,7 +480,247 @@ void configureLinkage(double l0, double l1, double l2, double l3, Model& model, 
         ankle_angle.setRangeMin(t3_finalbounds[0]);
         ankle_angle.setRangeMax(t3_finalbounds[1]);
     }
-     
+}
+
+void configureSlider(double x0, double y0, double l10, double l20, double l3, Model& model,
+        double ub, double lb) {
+    using std::pow;
+    using SimTK::Pi;
+    
+    double l0 = sqrt(pow(x0, 2) + pow(y0, 2));
+    double alpha = atan2(x0, y0);
+
+    // Get the angles for t1 and t3 that correspont to the upper and lower
+    // bounds of l1.
+    auto coords1 = sliderKinematicsL1(lb, alpha, l0, l3);
+    auto coords2 = sliderKinematicsL1(ub, alpha, l0, l3);
+
+    std::vector<double> t1_kinbounds = {coords1[0], coords2[0]};
+    std::vector<double> l1_kinbounds = {lb, ub};
+    std::vector<double> t3_kinbounds = {coords1[2], coords2[2]};
+
+    // Sort the other bounds which might not be ordered.
+    std::sort(t1_kinbounds.begin(), t1_kinbounds.end());
+    std::sort(t3_kinbounds.begin(), t3_kinbounds.end());
+
+    // If the output is shorter than the base, we need to consider the case 
+    // where there is a local min/max in the input angle.
+    if (abs(l3) < l0) {
+        double l1_opt = sqrt(pow(l0, 2) - pow(l3, 2));
+        double beta = atan2(l3, l1_opt);
+        double t1_opt = -Pi / 2 + beta - alpha;
+        double t3_opt = beta - alpha;  
+
+        // If this optima is within the current bounds, we need to expand them.
+        if (t3_opt > t3_kinbounds[0] && t3_opt < t3_kinbounds[1]) { 
+            if (t1_opt < t1_kinbounds[0]) {
+                t1_kinbounds[0] = t1_opt;
+            } else if (t1_opt > t1_kinbounds[1]) {
+                t1_kinbounds[1] = t1_opt;
+            }
+        }
+
+        // Other side 1.
+        t3_opt = Pi - beta - alpha;
+
+        // If this optima is within the current bounds, we need to expand them.
+        if (t3_opt > t3_kinbounds[0] && t3_opt < t3_kinbounds[1]) {
+            if (t1_opt < t1_kinbounds[0]) {
+                t1_kinbounds[0] = t1_opt;
+            } else if (t1_opt > t1_kinbounds[1]) {
+                t1_kinbounds[1] = t1_opt;
+            }
+        }
+
+        // Other side 2.
+        t3_opt = -Pi - beta - alpha;
+
+        // If this optima is within the current bounds, we need to expand them.
+        if (t3_opt > t3_kinbounds[0] && t3_opt < t3_kinbounds[1]) {
+            if (t1_opt < t1_kinbounds[0]) {
+                t1_kinbounds[0] = t1_opt;
+            } else if (t1_opt > t1_kinbounds[1]) {
+                t1_kinbounds[1] = t1_opt;
+            }
+        }
+    }
+
+    std::cout << "Implied kinematic limits, t1: " << t1_kinbounds[0] << " to "
+              << t1_kinbounds[1] << std::endl;
+    std::cout << "Implied kinematic limits, l1: " << l1_kinbounds[0] << " to "
+              << l1_kinbounds[1] << std::endl;
+    std::cout << "Implied kinematic limits, t3: " << t3_kinbounds[0] << " to "
+              << t3_kinbounds[1] << std::endl;
+
+    // Now we need to go to the model and set the linkage lengths.
+    model.initSystem();
+    auto& s = model.initializeState();
+
+    auto& B = model.updBodySet();
+    auto& J = model.updJointSet();
+
+    for (std::string side : {"r", "l"}) {
+        auto& tibia = B.get("tibia_" + side);
+        auto& talus = B.get("talus_" + side);
+        auto& link1 = model.updComponent<Body>("link1_" + side);
+        auto& link2 = model.updComponent<Body>("link2_" + side);
+
+        auto& knee = J.get("knee_" + side);
+        auto& ankle = J.get("ankle_" + side);
+        auto& j_in = model.updComponent<Joint>("j_in_" + side);
+        auto& j_passive1 = model.updComponent<Joint>("j_passive1_" + side);
+
+        auto& pin_con =
+                model.updComponent<PointOnLineConstraint>("pin_con_" + side);
+
+        // Position of the Ankle in the Tibia frame.
+        PhysicalOffsetFrame& tibia_offset_frame = knee.upd_frames(1);
+        auto P_tibia_ankle =
+                tibia_offset_frame.findStationLocationInAnotherFrame(
+                        s, SimTK::Vec3(0, 0, 0), talus);
+        double l_tibia = P_tibia_ankle[1];
+
+        // Set the input link geometry.
+        auto& link1_geo = link1.upd_attached_geometry(0);
+        Brick* link1_brick = dynamic_cast<Brick*>(&(link1_geo));
+        auto& link1_half_lengths = link1_brick->upd_half_lengths();
+        link1_half_lengths[0] = l10 / 2;
+
+        // Set the input joint transformations.
+        PhysicalOffsetFrame& j_in_parent = j_in.upd_frames(0);
+        PhysicalOffsetFrame& j_in_child = j_in.upd_frames(1);
+        j_in_parent.set_translation({-l10 / 2, 0, 0});
+        j_in_child.set_translation({l20 / 2, 0, 0});
+
+        // Set the coupler link geometry.
+        auto& link2_geo = link2.upd_attached_geometry(0);
+        Brick* link2_brick = dynamic_cast<Brick*>(&(link2_geo));
+        auto& link2_half_lengths = link2_brick->upd_half_lengths();
+        link2_half_lengths[0] = l20 / 2;
+
+        // Set the passive joint transformations.
+        PhysicalOffsetFrame& j_passive1_parent = j_passive1.upd_frames(0);
+        PhysicalOffsetFrame& j_passive1_child = j_passive1.upd_frames(1);
+        j_passive1_parent.set_translation({x0, -l_tibia + y0, 0});
+        j_passive1_child.set_translation({-l10 / 2, 0, 0});
+
+        // Set the loop-closure constraint transformations.
+        pin_con.setPointOnLine({l20 / 2, 0, 0});
+        pin_con.setPointOnFollower({l3, 0, 0});
+
+        // Go through the model and set the coordinate bounds for each of the
+        // linkage coordinates.
+        auto& ankle_angle = model.updComponent<Coordinate>(
+                "/jointset/ankle_" + side + "/ankle_angle_" + side);
+        auto& motor_length = model.updComponent<Coordinate>(
+                "/j_in_" + side + "/motor_length_" + side);
+        auto& passive_angle1 = model.updComponent<Coordinate>(
+                "/j_passive1_" + side + "/passive_angle1_" + side);
+
+        // Set the default coords for the linkage according to the ankle
+        // default.
+        auto default_coordinates = sliderKinematicsT3(
+                ankle_angle.getDefaultValue(), alpha, l0, l3);
+        std::cout << "Default coordinates: " << default_coordinates[0] << " "
+                  << default_coordinates[1] << " " << default_coordinates[2]
+                  << std::endl;
+
+        // Check solution  is within the l1 bounds.
+        if (default_coordinates[1] <= l1_kinbounds[1] &&
+                default_coordinates[1] >= l1_kinbounds[0]) {
+        } else {
+            OPENSIM_THROW(Exception, "Default configuration is not within "
+                                     "perscribed bounds for motor length.");
+        }
+        motor_length.setDefaultValue(default_coordinates[1]);
+        passive_angle1.setDefaultValue(default_coordinates[0]);
+
+        auto lower_bound_sol =
+                sliderKinematicsT3(ankle_angle.getRangeMin(), alpha, l0, l3);
+        auto upper_bound_sol =
+                sliderKinematicsT3(ankle_angle.getRangeMax(), alpha, l0, l3);
+        std::vector<double> t1_anklebounds{lower_bound_sol[0], upper_bound_sol[0]};
+        std::vector<double> l1_anklebounds{lower_bound_sol[1], upper_bound_sol[1]};
+        std::vector<double> t3_anklebounds{lower_bound_sol[2], upper_bound_sol[2]};
+        std::sort(t1_anklebounds.begin(), t1_anklebounds.end());
+        std::sort(l1_anklebounds.begin(), l1_anklebounds.end());
+        std::sort(t3_anklebounds.begin(), t3_anklebounds.end());
+        // If the output is shorter than the base, we need to consider the case
+        // where there is a local min/max in the input angle.
+        if (abs(l3) < l0) {
+            double l1_opt = sqrt(pow(l0, 2) - pow(l3, 2));
+            double beta = atan2(l3, l1_opt);
+            double t1_opt = -Pi / 2 + beta - alpha;
+            double t3_opt = beta - alpha;
+
+            // If this optima is within the current bounds, we need to expand
+            // them.
+            if (t3_opt > t3_anklebounds[0] && t3_opt < t3_anklebounds[1]) {
+                if (t1_opt < t1_anklebounds[0]) {
+                    t1_anklebounds[0] = t1_opt;
+                } else if (t1_opt > t1_anklebounds[1]) {
+                    t1_anklebounds[1] = t1_opt;
+                }
+            }
+
+            // Other side 1.
+            t3_opt = Pi - beta - alpha;
+
+            // If this optima is within the current bounds, we need to expand
+            // them.
+            if (t3_opt > t3_anklebounds[0] && t3_opt < t3_anklebounds[1]) {
+                if (t1_opt < t1_anklebounds[0]) {
+                    t1_anklebounds[0] = t1_opt;
+                } else if (t1_opt > t1_anklebounds[1]) {
+                    t1_anklebounds[1] = t1_opt;
+                }
+            }
+
+            // Other side 2.
+            t3_opt = -Pi - beta - alpha;
+
+            // If this optima is within the current bounds, we need to expand
+            // them.
+            if (t3_opt > t3_anklebounds[0] && t3_opt < t3_anklebounds[1]) {
+                if (t1_opt < t1_anklebounds[0]) {
+                    t1_anklebounds[0] = t1_opt;
+                } else if (t1_opt > t1_anklebounds[1]) {
+                    t1_anklebounds[1] = t1_opt;
+                }
+            }
+        }
+
+        std::cout << "Implied limits based on " + side + " ankle motion, t1: "
+                  << t1_anklebounds[0] << " to " << t1_anklebounds[1]
+                  << std::endl;
+        std::cout << "Implied limits based on " + side + " ankle motion, l1: "
+                  << l1_anklebounds[0] << " to " << l1_anklebounds[1]
+                  << std::endl;
+        std::cout << "Implied limits based on " + side + " ankle motion, t3: "
+                  << t3_anklebounds[0] << " to " << t3_anklebounds[1]
+                  << std::endl;
+
+        // Bounds on each joint should be the intersection of the ankle bounds
+        // and the kinematic bounds.
+        auto t1_finalbounds = boundIntersection(t1_kinbounds, t1_anklebounds);
+        auto l1_finalbounds = boundIntersection(l1_kinbounds, l1_anklebounds);
+        auto t3_finalbounds = boundIntersection(t3_kinbounds, t3_anklebounds);
+        std::cout << "Final bounds, " + side + " t1: " << t1_finalbounds[0]
+                  << " to " << t1_finalbounds[1] << std::endl;
+        std::cout << "Final bounds, " + side + " l1: " << l1_finalbounds[0]
+                  << " to " << l1_finalbounds[1] << std::endl;
+        std::cout << "Final bounds, " + side + " t3: " << t3_finalbounds[0]
+                  << " to " << t3_finalbounds[1] << std::endl;
+
+        passive_angle1.setRangeMin(t1_finalbounds[0]);
+        passive_angle1.setRangeMax(t1_finalbounds[1]);
+
+        motor_length.setRangeMin(l1_finalbounds[0]);
+        motor_length.setRangeMax(l1_finalbounds[1]);
+
+        ankle_angle.setRangeMin(t3_finalbounds[0]);
+        ankle_angle.setRangeMax(t3_finalbounds[1]);
+    }
 }
 
 
@@ -516,7 +831,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
         std::string motor_mode, double smooth, double k_pea,
         double t_pea, double gamma_lim, double lambda_lim,
         std::string linkage_type,
-        double l0, double l1, double l2, double l3) {
+        double x0, double y0, double l1, double l2, double l3, double sm, int am) {
 
     using SimTK::Pi;
 
@@ -526,9 +841,58 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     // Define the optimal control problem.
     // ===================================
     Model model_in(model_file);
-    configureLinkage(
-            l0, l1, l2, l3, model_in, -Pi / 180.0 * 5.0, -Pi / 180.0 * 175.0);
-    model_in.print("test.osim");
+    if (linkage_type == "fourbar") {
+        double l0 = sqrt(std::pow(x0, 2) + std::pow(y0, 2));
+
+        double t2_lb, t2_ub;
+        if (am <= 1) {
+            t2_lb = -2*Pi;
+            t2_ub = -Pi;
+            std::cout << "Assembly mode 1." << std::endl;
+        } else {
+            t2_lb = -Pi;
+            t2_ub = 0;
+            std::cout << "Assembly mode 2." << std::endl;
+        }
+
+        
+        // Check the linkage dimensions are valid for a crank-rocker.
+        // Condition 1: Input link is smallest link in the linkage.
+        bool cond1 = (l1 < l0 && l1 < l2 && l1 < abs(l3));
+
+        // Condition 2: Coupler link is the largest.
+        bool cond2 = (l2 > l0 && l2 > l1 && l2 > abs(l3));
+
+        // Condition 3: Crank-rocker type check.
+        bool cond3 = ((l1 + l2) < (l0 + abs(l3)));
+
+        // Printing.
+        std::cout << "Checking linkage specification..." << std::endl;
+        std::cout << "Condition 1: input shortest link -- " << cond1
+                  << std::endl;
+        std::cout << "Condition 2: coupler longest link -- " << cond2
+                  << std::endl;
+        std::cout << "Condition 3: crank-rocker type -- " << cond3 << std::endl;
+
+        // Throwing if failed.
+        if (!(cond1 && cond2 && cond3)) {
+            OPENSIM_THROW(Exception, "Linkage is not a valid "
+                                     "crank(motor)-rocker(ankle) linkage");
+        }
+
+        configureFourbar(am, x0, y0, l1, l2, l3, model_in,
+                t2_ub - sm / 100.0 * (t2_ub - t2_lb),
+                t2_lb + sm / 100.0 * (t2_ub - t2_lb));
+    } 
+    else if (linkage_type == "slider") {
+        double l0 = sqrt(std::pow(x0, 2) + std::pow(y0, 2));
+
+        double t1_lb = abs(l0 - abs(l3));
+        double t1_ub = (l0 + abs(l3));
+        configureSlider(x0, y0, l1, l2, l3, model_in,
+                t1_ub - sm / 100 * (t1_ub - t1_lb),
+                t1_lb + sm / 100 * (t1_ub - t1_lb));
+    }
 
     bool has_spring = false;
     for (auto& spring : model_in.updComponentList<SpringGeneralizedForce>()) {
@@ -555,6 +919,15 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     for (const auto& motor : model.getComponentList<TorqueActuator>()) {
         std::cout << "Found Torque Actuator: " << motor.getName() << std::endl;
         has_idealtorque = true;
+    }
+
+    bool has_idealforce = false;
+    for (const auto& motor : model.getComponentList<CoordinateActuator>()) {
+        if (IO::StartsWith(motor.getName(), "motor")) {
+            std::cout << "Found Force Actuator: " << motor.getName()
+                      << std::endl;
+            has_idealforce = true;
+        }
     }
 
     
@@ -611,7 +984,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     // Symmetric coordinate actuator controls.
     symmetryGoal->addControlPair({"/lumbarAct"});
 
-    if (has_dcmotor || has_idealtorque) {
+    if (has_dcmotor || has_idealtorque || has_idealforce) {
         symmetryGoal->addControlPair({"/motor_r", "/motor_l"});
         symmetryGoal->addControlPair({"/motor_l", "/motor_r"});
     }
@@ -634,7 +1007,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     speedGoal->set_desired_average_speed(speed);
 
     // Motor effort over time.
-    if (has_dcmotor || has_idealtorque) {
+    if (has_dcmotor || has_idealtorque || has_idealforce) {
         if (motor_mode == "exponent") {
 
             auto* motorEffortGoal =
@@ -661,7 +1034,13 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
                 // Voltage and current.
                 motorEnergyGoal->addPair({"/motor_r", "/motor_r/current"});
                 motorEnergyGoal->addPair({"/motor_l", "/motor_l/current"});
+            } else if (has_idealforce) {
+                motorEnergyGoal->addPair(
+                        {"/motor_r", "/j_in_r/motor_length_r/speed", false});
+                motorEnergyGoal->addPair(
+                        {"/motor_l", "/j_in_l/motor_length_l/speed", false});
             }
+
             motorEnergyGoal->setSmoothScale(smooth);
         } else {
             OPENSIM_THROW(InvalidArgument,
@@ -676,7 +1055,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     muscleEffortGoal->setExponent(eff_exp_muscle);
     muscleEffortGoal->setDivideByDuration(true);
 
-    if (has_dcmotor || has_idealtorque) {
+    if (has_dcmotor || has_idealtorque || has_idealforce) {
         muscleEffortGoal->setWeightForControl("/motor_r", 0);
         muscleEffortGoal->setWeightForControl("/motor_l", 0);
     }
@@ -733,6 +1112,9 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     if (auto body = model.findComponent<Coordinate>("motor_angle")) {
         problem.setStateInfo("/j_in_r/motor_angle_r/speed", {-s_mech, s_mech});
         problem.setStateInfo("/j_in_l/motor_angle_l/speed", {-s_mech, s_mech});
+    } else if (auto body = model.findComponent<Coordinate>("motor_length")) {
+        problem.setStateInfo("/j_in_r/motor_length_r/speed", {-s_mech, s_mech});
+        problem.setStateInfo("/j_in_l/motor_length_l/speed", {-s_mech, s_mech});
     }
 
     if (auto body = model.findComponent<Coordinate>("passive_angle1")) {
@@ -761,7 +1143,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
 
     problem.setMultiplierBounds({-lambda_lim, lambda_lim});
 
-    if (has_dcmotor || has_idealtorque) {
+    if (has_dcmotor || has_idealtorque || has_idealforce) {
         problem.setControlInfo(
                 "/motor_r", {-motor_bound, motor_bound}, {}, {}, 1);
         problem.setControlInfo(
@@ -803,6 +1185,7 @@ MocoSolution gaitPrediction(std::string model_file, MocoTrajectory guess,
     // Solve problem.
     // ==============
     study.print(fn_prefix + "_study.moco");
+    model.print(fn_prefix + "_model.osim");
     MocoSolution solution = study.solve();
     solution.unseal();
     solution.write(fn_prefix + "_solution_halfcycle.sto");
@@ -840,15 +1223,15 @@ int main(int argc, char* argv[]) {
         std::string model_file, guess_file, track_file, scaling_method,
                 motor_mode, linkage_type;
         double motor_weight, track_weight, speed_bound, motor_bound, speed,
-                smooth, k_pea, t_pea, gamma_lim, lambda_lim, l0, l1, l2, l3;
-        int Nmesh, Nparallel, eff_exp_motor, eff_exp_muscle, NmaxIts;
+                smooth, k_pea, t_pea, gamma_lim, lambda_lim, x0, y0, l1, l2, l3, sm;
+        int Nmesh, Nparallel, eff_exp_motor, eff_exp_muscle, NmaxIts, am;
 
         // Log the version for reference.
         std::cout << "2D Gait Generation -- Tyler Morrison 2021" << std::endl;
         std::cout << "Version compiled " << __DATE__ << " at " __TIME__ << "."
                   << std::endl;
         bool predict_only;
-        if (argc == 26) {
+        if (argc == 29) {
             std::cout << "Run in two-step track + predict mode..." << std::endl;
             predict_only = false;
             model_file = argv[1];
@@ -872,11 +1255,14 @@ int main(int argc, char* argv[]) {
             gamma_lim = atof(argv[19]);
             lambda_lim = atof(argv[20]);
             linkage_type = argv[21];
-            l0 = atof(argv[22]);
-            l1 = atof(argv[23]);
-            l2 = atof(argv[24]);
-            l3 = atof(argv[25]);
-        } else if (argc == 24) {
+            x0 = atof(argv[22]);
+            y0 = atof(argv[23]);
+            l1 = atof(argv[24]);
+            l2 = atof(argv[25]);
+            l3 = atof(argv[26]);
+            sm = atof(argv[27]);
+            am = atoi(argv[28]);
+        } else if (argc == 27) {
             std::cout << "Run in one-step predict mode..." << std::endl;
             predict_only = true;
             model_file = argv[1];
@@ -900,10 +1286,13 @@ int main(int argc, char* argv[]) {
             gamma_lim = atof(argv[17]);
             lambda_lim = atof(argv[18]);
             linkage_type = argv[19];
-            l0 = atof(argv[20]);
-            l1 = atof(argv[21]);
-            l2 = atof(argv[22]);
-            l3 = atof(argv[23]);
+            x0 = atof(argv[20]);
+            y0 = atof(argv[21]);
+            l1 = atof(argv[22]);
+            l2 = atof(argv[23]);
+            l3 = atof(argv[24]);
+            sm = atof(argv[25]);
+            am = atoi(argv[26]);
         } else if (argc == 3) {
             std::cout << "Generate contact force mode..." << std::endl;
             model_file = argv[1];
@@ -965,10 +1354,13 @@ int main(int argc, char* argv[]) {
         std::cout << "19: Velocity correction limit: " << gamma_lim << std::endl;
         std::cout << "20: Constraint force limit: " << lambda_lim << std::endl;
         std::cout << "21: Linkage type: " << linkage_type << std::endl;
-        std::cout << "22: Link length 0: " << l0 << std::endl;
-        std::cout << "23: Link length 1: " << l1 << std::endl;
-        std::cout << "24: Link length 2: " << l2 << std::endl;
-        std::cout << "25: Link length 3: " << l3 << std::endl;
+        std::cout << "22: Base link x0: " << x0 << std::endl;
+        std::cout << "23: Base link y0: " << y0 << std::endl;
+        std::cout << "24: Link length 1: " << l1 << std::endl;
+        std::cout << "25: Link length 2: " << l2 << std::endl;
+        std::cout << "26: Link length 3: " << l3 << std::endl;
+        std::cout << "27: Singularity margin %: " << sm << std::endl;
+        std::cout << "28: Assembly mode (fourbar): " << am << std::endl;
         std::cout << "***************************************" << std::endl;
 
         // Solve the initial tracking problem.
@@ -978,20 +1370,20 @@ int main(int argc, char* argv[]) {
             gaitPrediction(model_file, guess_traj, "", speed, motor_weight, 0,
                     speed_bound, motor_bound, scaling_method, Nmesh, Nparallel,
                     "predict", eff_exp_muscle, eff_exp_motor, NmaxIts,
-                    motor_mode, smooth, k_pea, t_pea, gamma_lim, lambda_lim, linkage_type, l0, l1, l2, l3);
+                    motor_mode, smooth, k_pea, t_pea, gamma_lim, lambda_lim, linkage_type, x0, y0, l1, l2, l3, sm, am);
         } else {
         auto track_sol = gaitPrediction(model_file, guess_traj, track_file,
                 speed, motor_weight, track_weight, speed_bound, motor_bound,
                 scaling_method, Nmesh, Nparallel, "track", eff_exp_muscle, eff_exp_motor, NmaxIts, motor_mode, smooth, k_pea, t_pea,
-                    gamma_lim, lambda_lim, linkage_type, l0, l1, l2, l3);
+                    gamma_lim, lambda_lim, linkage_type, x0, y0, l1, l2, l3, sm, am);
 
         // Solve the pure prediction problem.
         // Ignores the track file and the track weight.
         gaitPrediction(model_file, track_sol, "", speed, motor_weight, 0,
                 speed_bound, motor_bound, scaling_method, Nmesh, Nparallel,
                 "predict", eff_exp_muscle, eff_exp_motor, NmaxIts, motor_mode,
-                smooth, k_pea, t_pea, gamma_lim, lambda_lim, linkage_type, l0,
-                l1, l2, l3);
+                smooth, k_pea, t_pea, gamma_lim, lambda_lim, linkage_type, x0, y0,
+                l1, l2, l3, sm, am);
         }
 
     } catch (const std::exception& e) { std::cout << e.what() << std::endl; }
