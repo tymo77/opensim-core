@@ -242,19 +242,22 @@ std::unique_ptr<CasOC::Solver> MocoCasADiSolver::createCasOCSolver(
             0.0, SimTK::NTraits<double>::getInfinity(), {-1.0});
     checkPropertyValueIsInSet(getProperty_verbosity(), {0, 1, 2});
     if (get_optim_solver() == "ipopt") {
+        // I think it is worth forcing this option to be on.
         solverOptions["print_user_options"] = "yes";
         // Set the optional options file name.
         solverOptions["option_file_name"] = get_optim_ipopt_opt_filename();
+        // Hessian approximation needs to be set here, not in the options file.
+        // Casadi is probably checking this option and setting it to a default if missing.
+        solverOptions["hessian_approximation"] =
+                get_optim_hessian_approximation();
         // If we have an options file, we need to give it all the options we want to use.
         // This is because clobbering is disabled currently.
-        if (!get_optim_ipopt_opt_filename().empty()) {
+        if (get_optim_ipopt_opt_filename().empty()) {
             if (get_verbosity() < 2) {
                 solverOptions["print_level"] = 0;
             } else if (get_optim_ipopt_print_level() != -1) {
                 solverOptions["print_level"] = get_optim_ipopt_print_level();
             }
-            solverOptions["hessian_approximation"] =
-                    get_optim_hessian_approximation();
 
             if (get_optim_max_iterations() != -1)
                 solverOptions["max_iter"] = get_optim_max_iterations();
